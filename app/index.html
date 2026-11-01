@@ -352,7 +352,7 @@ body.projection .commune-lbl .cl{font-size:13px}
     <div class="panel kpis" id="kpis"></div>
     <div class="kpis-off" id="kpis-off" aria-label="Indicateurs masqués"></div>
   </section>
-  <section id="b-verdict" aria-labelledby="h-verdict"><h2 class="sec-h" id="h-verdict">Verdict</h2><div class="panel verdict" id="verdict"></div></section>
+  <section id="b-verdict" aria-labelledby="h-verdict"><h2 class="sec-h" id="h-verdict">Verdict</h2><div class="panel verdict" id="verdict" aria-live="polite"></div></section>
   <div class="row2">
     <div class="panel card" id="b-jour"><div class="card-h"><div><h2>Une journée type</h2><p id="jt-sub"></p></div>
       <div class="seg" id="saison" style="min-width:160px"><button data-v="hiver">Hiver</button><button data-v="ete">Été</button></div></div>
@@ -642,6 +642,8 @@ function syncControls() {
   $("ve_pilote").disabled = P.horizon !== "2035";
   $("ve_note").textContent = P.horizon === "2035" ? "Recharge placée sur les surplus solaires (sinon heures creuses)." : "Disponible à l'horizon 2035 (VE en nombre).";
   for (const select of anneeSelects) select.value = P.annee;
+  // valeurs annoncées par les lecteurs d'écran : MW et %, pas le multiplicateur brut
+  for (const [id, v] of [["m_pv", "v-pv"], ["m_eol", "v-eol"], ["bat_puissance", "v-bat"], ["ecs_deplace", "v-ecs"], ["ve_pilote", "v-ve"], ["pv_plafond", "v-plaf"]]) $(id).setAttribute("aria-valuetext", $(v).textContent.replace(/ · /g, ", "));
 }
 // ---- calcul
 let lastSeries = null, lastR = null, lastAll = null;
