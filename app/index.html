@@ -115,6 +115,9 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;background:var(--pane
 .seg button{flex:1;border:0;background:var(--panel);padding:5px 6px;cursor:pointer;font-size:13px}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button[aria-pressed="true"]{background:var(--accent-weak);color:var(--accent);font-weight:700}
+.ctl-row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+.ctl-row .seg{min-width:0}
+.ctl-row .seg button{white-space:nowrap;padding-inline:10px}
 .sub{display:flex;flex-direction:column;gap:8px;padding-left:20px}
 .linkbtn{background:none;border:1px dashed var(--accent);color:var(--accent);border-radius:3px;padding:5px 8px;cursor:pointer;font-weight:700;font-size:13px;align-self:flex-start}
 /* contenu */
@@ -403,6 +406,13 @@ body.projection .commune-lbl .cl{font-size:13px}
     <p class="note" id="c-soc" hidden>Pas de batterie dans ce scénario.</p>
     <div class="legend" id="lg-heures"></div>
     <p class="hint">Ctrl + molette, pincement ou barre du bas pour zoomer ; glisser pour se déplacer dans la zone zoomée.</p></div>
+  <div class="panel card" id="b-traj"><div class="card-h"><div><h2>Trajectoires : jusqu'où développer ?</h2>
+      <p>Taux de couverture (heure par heure), moyenne 2021-2025, pour chaque combinaison de solaire et d'éolien. Cliquer une case applique le scénario.</p></div>
+    <div class="ctl-row"><div class="seg" id="traj-paquet" role="group" aria-label="Solutions"><button data-v="P0 aucune">Aucune</button><button data-v="P1 ballons">Ballons</button><button data-v="P2 batterie">Batterie</button><button data-v="P3 ballons + batterie">Ballons + batterie</button></div>
+      <div class="seg" id="traj-hz" role="group" aria-label="Consommation"><button data-v="actuel">Aujourd'hui</button><button data-v="2035">2035</button></div></div></div>
+    <div class="ec" id="c-traj" style="height:360px" role="img" aria-label="Carte de chaleur du taux de couverture selon le solaire et l'éolien"></div>
+    <div class="legend" id="lg-traj"></div>
+    <p class="hint" id="traj-note"></p></div>
   <div class="panel card" id="b-hyp"><div class="card-h"><div><h2>Toutes les hypothèses</h2><p>Formulaire généré depuis le schéma des paramètres exporté par Python (valeur, bornes, unité, source). Les valeurs modifiées sont surlignées.</p></div>
     <button class="linkbtn" id="reset">Tout réinitialiser</button></div>
     <div class="pform" id="pform"></div></div>
@@ -437,6 +447,7 @@ body.projection .commune-lbl .cl{font-size:13px}
 <div class="tip" id="tip" hidden></div>
 
 <script src="data.js"></script>
+<script src="precalcul.js"></script>
 <script>
 const MOTEUR = (function(){
 // moteur.mjs — Portage JavaScript de référence de donnees/scripts/moteur_ref.py (validé sur tests/golden.json).
@@ -609,7 +620,7 @@ for (const a of META.annees) {
   for (let i = 0; i < A.n; i++) { const d = new Date(Date.UTC(+a, 0, 1 + A.jour[i])); A.mois[i] = d.getUTCMonth(); const w = d.getUTCDay(); A.ouvre[i] = (w !== 0 && w !== 6) ? 1 : 0; }
 }
 // ---- état
-let P = { ...DEF, annee: META.annee_typique }, vue = "elu", saison = "hiver", presetActif = "A", demoStep = 0;
+let P = { ...DEF, annee: META.annee_typique }, trajSuit = true, vue = "elu", saison = "hiver", presetActif = "A", demoStep = 0;
 const PRESETS = META.presets;
 const sim = (p, a, series) => MOTEUR.simuler(ANS[a], { ...p, annee: a }, DEF, META.profils, series);
 // ---- contrôles
@@ -625,7 +636,7 @@ const PRESET_COURT = { A: "A · parc actuel", B: "B · solaire ×2", C: "C · so
 for (const id of PRESET_IDS) if (PRESETS[id]) { const o = document.createElement("option"); o.value = id; o.textContent = PRESET_COURT[id]; chips.append(o); }
 { const o = document.createElement("option"); o.value = ""; o.textContent = "Personnalisé (réglages modifiés)"; o.disabled = true; chips.append(o); }
 chips.onchange = () => { if (chips.value) appliquerPreset(chips.value); };
-function appliquerPreset(id) { P = { ...DEF, annee: P.annee, ...PRESETS[id].p }; presetActif = id; syncControls(); render(); }
+function appliquerPreset(id) { P = { ...DEF, annee: P.annee, ...PRESETS[id].p }; presetActif = id; trajSuit = true; syncControls(); render(); }
 function ticks(el, max, marks) { el.innerHTML = marks.map(([v, t]) => `<span style="left:calc(${v / max * 100}% + ${8 - 16 * v / max}px)">${t}</span>`).join(""); }
 ticks($("tk-pv"), 4, [[1, "A"], [2, "B"], [3, "C"]]); ticks($("tk-eol"), 3, [[1, "A·B"], [1.5, "C"]]);
 const num = (id, key) => { const el = $(id); el.oninput = () => { P[key] = +el.value; presetActif = null; syncControls(); render(); }; };
@@ -877,7 +888,7 @@ let mapL = null, mapCom = null, mapPostes = null, mapFit = false;
 const BLOCS = [
   ["Textes", [["b-resume", "Résumé du scénario"], ["b-verdict", "Verdict"]]],
   ["Graphiques et carte", [["b-jour", "Journée type"], ["b-carte", "Carte : communes et postes sources"], ["b-mois", "Bilan mois par mois"]]],
-  ["Vue expert", [["b-heures", "Deux semaines heure par heure"], ["b-hyp", "Toutes les hypothèses"], ["b-annees", "Indicateurs 2021-2025"]]]
+  ["Vue expert", [["b-heures", "Deux semaines heure par heure"], ["b-traj", "Trajectoires"], ["b-hyp", "Toutes les hypothèses"], ["b-annees", "Indicateurs 2021-2025"]]]
 ];
 const MENU_IDS = BLOCS.flatMap(g => g[1].map(x => x[0]));
 const KPI_IDS = ["k-prod", "k-auto", "k-surplus", "k-deficit","k-ecr", "k-vig", "k-pointes", "k-cout"];
@@ -1131,9 +1142,57 @@ function renderExpert() {
   $("v-sem").textContent = dt.toLocaleDateString("fr-FR", { day: "numeric", month: "long" }); $("hx-sub").textContent = `Année ${P.annee}, pas horaire, heure UTC`;
   setLegend("c-heures", "lg-heures", [[N.eol, "background:var(--s-eol)", "a"], [N.pv, "background:var(--s-pv)", "a"], [N.conso, "background:var(--ink)"], [N.seuil, "background:var(--seuil)"], ...(bat ? [[N.soc, "background:var(--s-bat)"]] : [])]);
   drawChart("c-heures", opt, H);
+  renderTraj();
   const colsT = [["couverture_horaire", "Taux de couverture h/h", 100, 1, "%"], ["couverture", "Prod. / conso", 100, 1, "%"], ["ecretement_part", "Écrêtement", 100, 1, "%"], ["heures_vigilance", "Heures de vigilance", 1, 0, "h"], ["pointe_injection_MW", "Pointe d'injection", 1, 0, "MW"], ["pointe_soutirage_MW", "Pointe d'appel", 1, 0, "MW"], ["surplus_exporte_MWh", "Surplus exporté", 1e-3, 1, "GWh"], ["deficit_importe_MWh", "Achat au réseau", 1e-3, 1, "GWh"], ["bat_cycles", "Cycles batterie", 1, 0, ""]];
   $("t-annees").innerHTML = `<thead><tr><th>Année</th>${colsT.map(c => `<th style="text-align:right">${c[1]}${c[4] ? ` (${c[4]})` : ""}</th>`).join("")}</tr></thead><tbody>${META.annees.map((a, i) => `<tr${a === P.annee ? ' style="background:var(--accent-weak)"' : ""}><td class="mono">${a}${a === META.annee_typique ? " ·typ." : ""}</td>${colsT.map(c => `<td class="num">${fr(lastAll[i][c[0]] * c[2], c[3])}</td>`).join("")}</tr>`).join("")}</tbody>`;
 }
+// ---- trajectoires (précalcul Python, moyennes 2021-2025) : carte de chaleur solaire × éolien
+const TRAJ = PRECALC.trajectoires, TRAJ_PV = [...new Set(TRAJ.map(t => t.m_pv))].sort((a, b) => a - b), TRAJ_EOL = [...new Set(TRAJ.map(t => t.m_eol))].sort((a, b) => a - b);
+const TRAJ_MIN = Math.min(...TRAJ.map(t => t.couv_h)), TRAJ_MAX = Math.max(...TRAJ.map(t => t.couv_h));
+const LIM_ECR = DEF.ecretement_max;
+let traj = { paquet: "P0 aucune", hz: "actuel" };
+const paquetDe = p => (p.ecs_deplace > 0 ? (p.bat_pilotage !== "aucune" ? "P3 ballons + batterie" : "P1 ballons") : (p.bat_pilotage !== "aucune" ? "P2 batterie" : "P0 aucune"));
+const mult = m => "×" + fr(m, m % 1 ? 2 : 0).replace(/0$/, "");
+// Paramètres qui reproduisent une case : batterie minimale du précalcul (pilotage « pointe ») ramenée en multiple de Ppv
+function paramsTraj(t) {
+  const bat = t.paquet.includes("batterie"), ballons = t.paquet.includes("ballons");
+  const pb = !bat ? DEF.bat_puissance : t.bat_MWh != null ? t.bat_MWh / (t.m_pv * K.Ppv_A * DEF.bat_duree) : META.parametres.bat_puissance.max;
+  return { ...DEF, annee: P.annee, horizon: t.horizon, m_pv: t.m_pv, m_eol: t.m_eol, ecs_deplace: ballons ? 1 : 0, bat_pilotage: bat ? "pointe" : "aucune", bat_puissance: pb };
+}
+function renderTraj() {
+  if (trajSuit) { traj = { paquet: paquetDe(P), hz: P.horizon }; trajSuit = false; }
+  for (const b of $("traj-paquet").children) b.setAttribute("aria-pressed", b.dataset.v === traj.paquet);
+  for (const b of $("traj-hz").children) b.setAttribute("aria-pressed", b.dataset.v === traj.hz);
+  const c = cols(), rows = TRAJ.filter(t => t.paquet === traj.paquet && t.horizon === traj.hz);
+  const ici = TRAJ_PV.findIndex(v => Math.abs(v - P.m_pv) < 1e-6), icj = TRAJ_EOL.findIndex(v => Math.abs(v - P.m_eol) < 1e-6);
+  const surGrille = ici >= 0 && icj >= 0 && paquetDe(P) === traj.paquet && P.horizon === traj.hz;
+  const data = rows.map(t => { const i = TRAJ_PV.indexOf(t.m_pv), j = TRAJ_EOL.indexOf(t.m_eol), k = (t.couv_h - TRAJ_MIN) / (TRAJ_MAX - TRAJ_MIN), ko = t.ecret_max > LIM_ECR + 1e-9;
+    const courant = surGrille && i === ici && j === icj;
+    return { value: [i, j, r1(t.couv_h * 100)], t,
+      label: { color: k > .55 ? c.panel : c.ink, fontWeight: courant ? 700 : 400 },
+      itemStyle: { borderColor: courant ? c.ink : c.panel, borderWidth: courant ? 3 : 1 } }; });
+  // hachures (comme les postes dépassés de la carte) : ajout au-delà des capacités restantes des postes
+  const motif = document.createElement("canvas"); motif.width = motif.height = 7;
+  { const g = motif.getContext("2d"); g.strokeStyle = hexA(c.ink, .4); g.lineWidth = 1.2; g.beginPath(); g.moveTo(-1, 8); g.lineTo(8, -1); g.stroke(); }
+  const hach = data.filter(d => !d.t.postes_ok_placement).map(d => [d.value[0], d.value[1]]);
+  const opt = { ...ecBase(c), grid: { left: 92, right: 16, top: 16, bottom: 52 },
+    xAxis: { type: "category", data: TRAJ_PV.map(m => `${mult(m)}\n${fr(m * K.Ppv_A, 0)} MW`), name: "Solaire (× parc actuel)", nameLocation: "middle", nameGap: 36, nameTextStyle: axTxt(c), axisLabel: axTxt(c), axisTick: { show: false }, axisLine: { show: false }, splitArea: { show: false } },
+    yAxis: { type: "category", data: TRAJ_EOL.map(m => `${mult(m)} · ${fr(m * K.Peol_A, 0)} MW`), name: "Éolien", nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: axTxt(c), axisTick: { show: false }, axisLine: { show: false } },
+    visualMap: { show: false, min: TRAJ_MIN * 100, max: TRAJ_MAX * 100, dimension: 2, inRange: { color: [hexA(c.bocage, .08), c.bocage] } },
+    series: [{ type: "heatmap", data, progressive: 0, emphasis: { itemStyle: { borderColor: c.accent, borderWidth: 2 } },
+      label: { show: true, fontFamily: c.font, fontSize: 12 * FS(), formatter: q => `${q.data.t.ecret_max > LIM_ECR + 1e-9 ? "✕ " : ""}${fr(q.data.t.couv_h * 100, 0)} %` } },
+      { type: "custom", data: hach, silent: true, z: 3, tooltip: { show: false },
+        renderItem: (pr, api) => { const p = api.coord([api.value(0), api.value(1)]), sz = api.size([1, 1]);
+          return { type: "rect", shape: { x: p[0] - sz[0] / 2 + 1, y: p[1] - sz[1] / 2 + 1, width: sz[0] - 2, height: sz[1] - 2 }, style: { fill: { image: motif, repeat: "repeat" } } }; } }] };
+  opt.tooltip = { ...opt.tooltip, trigger: "item", axisPointer: undefined, formatter: q => { const t = q.data.t;
+    return `<b>Solaire ${mult(t.m_pv)} (${fr(t.m_pv * K.Ppv_A, 0)} MW) · éolien ${mult(t.m_eol)} (${fr(t.m_eol * K.Peol_A, 0)} MW)</b><br>taux de couverture ${fr(t.couv_h * 100)} % (moyenne 2021-2025)<br>écrêtement ${fr(t.ecret * 100)} % · pire année ${fr(t.ecret_max * 100)} %${t.ecret_max > LIM_ECR + 1e-9 ? " ✕ au-delà de 5 %" : " ✓"}${t.paquet.includes("batterie") ? `<br>batterie ${t.bat_MWh != null ? `${fr(t.bat_MWh, 0)} MWh, VAN ${fr(t.van_MEUR, 0)} M€` : "introuvable même à 2 × Ppv"}` : ""}<br>${fr(t.ajout_MW, 0)} MW à raccorder : ${t.postes_ok_placement ? "tient dans les capacités restantes des postes" : "dépasse les capacités restantes des postes (hachuré)"}`; } };
+  drawChart("c-traj", opt);
+  const c0 = CH["c-traj"]; if (c0 && c0.chart && !c0.clic) { c0.clic = true; c0.chart.on("click", q => { if (!q.data || !q.data.t) return; P = paramsTraj(q.data.t); presetActif = null; syncControls(); render(); }); }
+  $("lg-traj").innerHTML = `<span><i class="a" style="width:56px;background:linear-gradient(90deg,${hexA(c.bocage, .08)},${c.bocage})"></i>${fr(TRAJ_MIN * 100, 0)} à ${fr(TRAJ_MAX * 100, 0)} %</span><span>✕ écrêtement au-delà de 5 % au moins une année</span><span><i class="a" style="background:repeating-linear-gradient(-45deg,${hexA(c.ink, .35)} 0 1px,transparent 1px 5px);border:1px solid var(--line)"></i>ajout au-delà des capacités restantes des postes</span><span><i class="a" style="background:transparent;box-shadow:inset 0 0 0 2px var(--ink)"></i>scénario affiché</span>`;
+  $("traj-note").textContent = (surGrille ? "" : "Le scénario affiché n'est pas sur cette grille (autre paquet, horizon ou réglage intermédiaire). ") +
+    (traj.paquet.includes("batterie") ? "Batterie : taille minimale pour tenir 5 % chaque année, pilotage « seulement les excès ». " : "") + "Un clic applique le scénario avec les autres hypothèses à leur valeur par défaut. Source : précalcul Python (13_trajectoire.py).";
+}
+for (const [id, k] of [["traj-paquet", "paquet"], ["traj-hz", "hz"]]) for (const b of $(id).children) b.onclick = () => { traj[k] = b.dataset.v; renderTraj(); };
 function buildForm() {
   const grp = { meteo: "Météo et volume", production: "Production", ecretement: "Écrêtement et seuils", conso: "Consommation 2035", ve: "Véhicules électriques", pac: "Pompes à chaleur", ecs: "Ballons d'eau chaude", batterie: "Batterie", economie: "Économie" };
   let h = "", cur = "";
