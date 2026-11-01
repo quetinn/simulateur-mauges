@@ -59,9 +59,11 @@ header>.hdr-right{grid-column:3;grid-row:1}
 .bottom-controls .label{white-space:nowrap}
 body{padding-bottom:76px}
 /* vue Démo : pas de barre du bas ; le panneau d'étape est seul en bas d'écran, la page défile pour qu'il ne masque rien */
-body.demo-on{padding-bottom:60vh;font-size:17px}
-body.demo-on .bottom-controls{display:none}
-body.demo-on .map{height:clamp(280px,calc(100vh - 500px),440px)}
+/* vue Démo : une scène (bandeau d'étape fixé en haut + 2-3 chiffres en grand), sans panneau superposé au contenu */
+body.demo-on{padding-bottom:40vh;font-size:17px}
+body.demo-on .bottom-controls{display:none!important}
+body.demo-on #b-resume,body.demo-on #b-kpis{display:none}
+body.demo-on .map{height:clamp(280px,calc(100vh - 400px),440px)}
 @media(max-width:900px){header{grid-template-columns:minmax(0,1fr) auto;gap:12px}
   .brand{grid-column:1/-1}
   header>.tabs{grid-column:1/-1;grid-row:2;justify-self:center}
@@ -244,13 +246,26 @@ td.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-n
 .tbl{overflow-x:auto}
 .foot{margin-top:28px;color:var(--ink-3);font-size:12.5px;display:flex;flex-wrap:wrap;gap:6px 18px}
 /* démo */
-.demo{position:fixed;inset:auto 16px 16px 16px;max-width:880px;margin:0 auto;background:var(--ink);color:var(--panel);border-radius:4px;padding:16px 18px;z-index:30;display:flex;gap:16px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.25)}
-.demo .n{font-family:var(--f-mono);font-size:12px;opacity:.75;white-space:nowrap}
-.demo h3{font-size:22px;color:var(--panel)}
-.demo p{margin:4px 0 0;font-size:16px;opacity:.92}
-.demo .nav{display:flex;gap:6px;margin-left:auto}
-.demo button{background:transparent;border:1px solid currentColor;color:inherit;border-radius:3px;padding:6px 12px;cursor:pointer;font-weight:700}
-.demo button:focus-visible{outline-color:var(--panel)}
+body:not(.demo-on) .demo-only{display:none!important}
+.ds-bar{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 22px;align-items:center;background:var(--ink);color:var(--panel);border-radius:0 0 4px 4px;padding:14px 18px}
+.ds-steps{list-style:none;margin:0;padding:0;display:flex;gap:6px}
+.ds-steps button,.ds-nav button{background:transparent;border:1px solid currentColor;color:inherit;border-radius:2px;cursor:pointer;font-weight:700}
+.ds-steps button{width:32px;height:32px;font-family:var(--f-mono);font-weight:500;font-size:14px;opacity:.55}
+.ds-steps button.vu{opacity:.8}
+.ds-steps button[aria-current="step"]{background:var(--panel);color:var(--ink);border-color:var(--panel);opacity:1}
+.ds-bar h2{font-size:24px;color:var(--panel)}
+.ds-bar p{margin:3px 0 0;font-size:18px;line-height:1.35;opacity:.92;max-width:80ch}
+.ds-nav{display:flex;gap:6px}
+.ds-nav button{padding:7px 14px;font-size:17px}
+.ds-bar button:focus-visible{outline-color:var(--panel)}
+.ds-figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.ds-fig{padding:16px 20px 18px;border-right:1px solid var(--line-2);display:flex;flex-direction:column;gap:6px;min-width:0}
+.ds-fig:last-child{border-right:0}
+.ds-fig .v{font-family:var(--f-display);font-stretch:87.5%;font-weight:700;font-size:clamp(44px,4.4vw,64px);line-height:1;font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:.12em}
+.ds-fig .d{font-family:var(--f-mono);font-size:16px;font-weight:500;color:var(--ink)}
+.ds-fig .r{font-size:15px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.ds-fig .pill{font-size:15px}
+@media (max-width:900px){.ds-bar{grid-template-columns:minmax(0,1fr) auto}.ds-bar>div:nth-child(2){grid-column:1/-1;grid-row:2}}
 /* mode projection (touche P) : texte de base 18 px, réglages repliés, petits textes agrandis d'autant */
 body.projection{font-size:18px}
 body.projection .label,body.projection .sec-h,body.projection th{font-size:13.5px}
@@ -258,9 +273,8 @@ body.projection .kpi .r,body.projection .pill,body.projection .note,body.project
 body.projection .kpis .kpi .v{font-size:clamp(32px,3vw,46px)}
 body.projection .oneline{font-size:18px}
 body.projection .card-h h2{font-size:23px}
-body.projection .demo h3{font-size:26px}
-body.projection .demo p{font-size:19px}
-body.projection .demo .n{font-size:14px}
+body.projection .ds-bar h2{font-size:27px}
+body.projection .ds-bar p{font-size:20px}
 body.projection .commune-lbl .cl{font-size:13px}
 .proj-btn[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 .hl{outline:3px solid var(--seuil);outline-offset:-3px;transition:outline-color .2s}
@@ -346,6 +360,12 @@ body.projection .commune-lbl .cl{font-size:13px}
 
 <div class="content">
 <main id="v-elu">
+  <div class="ds-bar demo-only" id="demo" role="region" aria-label="Parcours de démonstration">
+      <ol class="ds-steps" id="demo-steps" aria-label="Étapes"></ol>
+      <div><h2 id="demo-h"></h2><p id="demo-p" aria-live="polite"></p></div>
+      <div class="ds-nav"><button id="demo-prev" aria-label="Étape précédente" aria-keyshortcuts="ArrowLeft">←</button><button id="demo-next" aria-label="Étape suivante" aria-keyshortcuts="ArrowRight">→</button></div>
+  </div>
+  <div class="panel ds-figs demo-only" id="demo-figs"></div>
   <section id="b-resume" aria-labelledby="h-resume"><h2 class="sec-h" id="h-resume">Résumé du scénario</h2><p class="oneline" id="oneline"></p></section>
   <section id="b-kpis" aria-labelledby="h-kpis">
     <div class="sec-bar"><h2 class="sec-h" id="h-kpis">Indicateurs clés</h2></div>
@@ -414,8 +434,6 @@ body.projection .commune-lbl .cl{font-size:13px}
   </div>
 </nav>
 </div>
-<div class="demo" id="demo" hidden><div><div class="n" id="demo-n"></div><h3 id="demo-h"></h3><p id="demo-p"></p></div>
-  <div class="nav"><button id="demo-prev" aria-label="Étape précédente">←</button><button id="demo-next" aria-label="Étape suivante">→</button></div></div>
 <div class="tip" id="tip" hidden></div>
 
 <script src="data.js"></script>
@@ -579,7 +597,7 @@ return { chargerAnnee, simuler, batterie };
 <script>
 (function(){
 const $ = (s) => document.getElementById(s);
-const fr = (x, d = 1) => (x == null || !isFinite(x)) ? "–" : x.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const fr = (x, d = 1) => (x == null || !isFinite(x)) ? "–" : x.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }).replace("-", "−"); // vrai signe moins
 const DEF = Object.fromEntries(Object.entries(META.parametres).map(([k, v]) => [k, v.defaut]));
 const K = META.constantes;
 // ---- données : base64 → ArrayBuffer → Annee
@@ -646,12 +664,13 @@ function syncControls() {
   for (const [id, v] of [["m_pv", "v-pv"], ["m_eol", "v-eol"], ["bat_puissance", "v-bat"], ["ecs_deplace", "v-ecs"], ["ve_pilote", "v-ve"], ["pv_plafond", "v-plaf"]]) $(id).setAttribute("aria-valuetext", $(v).textContent.replace(/ · /g, ", "));
 }
 // ---- calcul
-let lastSeries = null, lastR = null, lastAll = null;
+let lastSeries = null, lastR = null, lastAll = null, lastEco = null;
 function render() {
   const all = META.annees.map(a => sim(P, a, a === P.annee));
   const r = all[META.annees.indexOf(P.annee)];
-  lastR = r; lastAll = all; lastSeries = r.series;
-  renderOneline(r); renderKpis(r, all); renderVerdict(r, all); renderJour(r.series); renderCarte(); renderMois(r.series);
+  const eco = ecoBatterie(r, all);
+  lastR = r; lastAll = all; lastSeries = r.series; lastEco = eco;
+  renderOneline(r); renderKpis(r, all, eco); renderVerdict(r, all, eco); renderJour(r.series); renderCarte(); renderMois(r.series);
   if (vue === "expert") { syncForm(); renderExpert(); }
   applyVis();
   $("hz_note").textContent = P.horizon === "2035" ? `${fr(r.ve_nb, 0)} VE · ${fr(r.pac_nb, 0)} logements en PAC · ${fr(r.consommation_MWh / 1000, 0)} GWh/an` : `Consommation mesurée de l'année (${fr(r.consommation_MWh / 1000, 0)} GWh).`;
@@ -666,7 +685,16 @@ function renderOneline(r) {
   if (P.pv_plafond < 1) sols.push(`injection solaire plafonnée à ${fr(P.pv_plafond * 100, 0)} %`);
   $("oneline").innerHTML = `<b>Solaire ${fr(P.m_pv * K.Ppv_A, 0)} MW (${variation(P.m_pv)} vs parc actuel)</b>, <b>éolien ${fr(P.m_eol * K.Peol_A, 0)} MW (${variation(P.m_eol)} vs parc actuel)</b>, ${sols.length ? sols.join(", ") : "sans solution de flexibilité"} — ${P.horizon === "2035" ? "consommation 2035 électrifiée" : "consommation actuelle"}, météo ${P.annee}.`;
 }
-function renderKpis(r, all) {
+// Économie de la batterie (vs le même scénario sans batterie) : gain moyen 2021-2025, VAN, points de couverture gagnés
+function ecoBatterie(r, all) {
+  const capex = r.capex_batterie_EUR; if (!(capex > 0)) return null;
+  const sans = META.annees.map(a => sim({ ...P, bat_pilotage: "aucune" }, a));
+  const gain = all.reduce((s, x, i) => s + x.valeur_annuelle_EUR - sans[i].valeur_annuelle_EUR, 0) / all.length;
+  const om = r.om_annuel_EUR, van = (gain - om) * r.facteur_annuite - capex;
+  const pts = (r.couverture_horaire - sans[META.annees.indexOf(P.annee)].couverture_horaire) * 100;
+  return { capex, gain, om, van, pts };
+}
+function renderKpis(r, all, eco) {
   const ecr = r.ecretement_part * 100, okAll = all.every(x => x.conforme), annKo = META.annees.filter((a, i) => !all[i].conforme);
   const st = r.conforme ? (okAll ? ["ok", "✓ Conforme chaque année"] : ["warn", `! Dépassé en ${annKo.join(", ")}`]) : ["ko", "✕ Au-delà de 5 %"];
   const gx = (v) => 8 + Math.min(v, 25) / 25 * 184;
@@ -677,13 +705,9 @@ function renderKpis(r, all) {
     ${[0, 5, 10, 15, 20, 25].map(t => `<line x1="${gx(t)}" x2="${gx(t)}" y1="16" y2="19" stroke="var(--ink-3)"/><text x="${gx(t)}" y="27" text-anchor="middle" style="font-size:9px">${t}</text>`).join("")}
     <line x1="${gx(5)}" x2="${gx(5)}" y1="3" y2="19" stroke="var(--seuil)" stroke-width="1.5" stroke-dasharray="3 2"/>
     <rect x="${gx(ecr) - 2}" y="5" width="4" height="14" fill="var(--ink)"/></svg>`;
-  const capex = r.capex_batterie_EUR;
   let cout = `<div class="v">0<span class="u">M€</span></div><div class="r">Aucune batterie dans ce scénario.</div>`;
-  if (capex > 0) {
-    const sans = META.annees.map(a => sim({ ...P, bat_pilotage: "aucune" }, a));
-    const gain = all.reduce((s, x, i) => s + x.valeur_annuelle_EUR - sans[i].valeur_annuelle_EUR, 0) / all.length;
-    const om = r.om_annuel_EUR, van = (gain - om) * r.facteur_annuite - capex;
-    const pts = (r.couverture_horaire - sans[META.annees.indexOf(P.annee)].couverture_horaire) * 100;
+  if (eco) {
+    const { capex, gain, om, van, pts } = eco;
     cout = `<div class="v">${fr(capex / 1e6, 0)}<span class="u">M€</span></div><div class="r">${pts > 0.05 ? `<b>${fr(capex / 1e6 / pts, 0)} M€ par point de couverture</b> gagné (+${fr(pts)} pt). ` : ""}Entretien ${fr(om / 1e6, 1)} M€/an, gain estimé ${fr(gain / 1e6, 1)} M€/an et VAN ${fr(van / 1e6, 0)} M€ sur ${P.duree_analyse} ans.</div>`;
   }
   // Repère « parc actuel » : solaire et éolien ×1, sans batterie, ballons ni plafond, même année et même horizon
@@ -728,7 +752,7 @@ function ajoutsPostes() {
   return GEO.postes.map(p => { const aj = Math.max(0, dp * p.pv_MW + de * p.eol_MW); const occ = p.capacite_reservee_MW - p.restant_MW; return { ...p, ajout: aj, remplissage: (occ + aj) / p.capacite_reservee_MW, depasse: Math.max(0, aj - p.restant_MW) }; });
 }
 const liste = (a) => a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " et " + a[a.length - 1];
-function renderVerdict(r, all) {
+function renderVerdict(r, all, eco) {
   const okAll = all.every(x => x.conforme), aj = ajoutsPostes();
   const ajout = Math.max(0, (P.m_pv - 1) * K.Ppv_A) + Math.max(0, (P.m_eol - 1) * K.Peol_A);
   const restLoc = GEO.postes.reduce((s, p) => s + p.restant_MW, 0);
@@ -736,6 +760,9 @@ function renderVerdict(r, all) {
   const libres = aj.filter(p => p.restant_MW - p.ajout > 10).map(p => p.nom);
   let cls = okAll ? "ok" : (r.conforme ? "warn" : "ko"), ic = okAll ? "✓" : (r.conforme ? "!" : "✕"), t = [];
   t.push(okAll ? "L'écrêtement reste sous la limite de 5 % pour les cinq années météo." : `L'écrêtement dépasse la limite de 5 % ${r.conforme ? "certaines années" : "cette année"} (jusqu'à ${fr(Math.max(...all.map(x => x.ecretement_part * 100)))} %).`);
+  // Batterie dont la VAN est négative : état « ! » même si l'écrêtement est conforme (conforme mais non rentable)
+  if (eco && eco.van < 0) { if (okAll) { cls = "warn"; ic = "!"; }
+    t.push(`Mais la batterie n'est pas rentable : ${fr(eco.capex / 1e6, 0)} M€ d'investissement et ${fr(eco.om / 1e6)} M€/an d'entretien pour un gain de ${fr(eco.gain / 1e6)} M€/an (VAN ${fr(eco.van / 1e6, 0)} M€ sur ${P.duree_analyse} ans).`); }
   if (!okAll) t.push(P.bat_pilotage === "aucune" ? "Leviers : davantage d'éolien plutôt que de solaire, ballons d'eau chaude à midi, ou une batterie." : "Agrandir la batterie ou réduire le solaire.");
   if (ajout > 0.5) t.push(sat.length ? `${fr(ajout, 0)} MW à raccorder : ${liste(sat)} ${sat.length > 1 ? "seraient saturés" : "serait saturé"} si l'on étendait le parc existant à l'identique ; orienter les projets vers ${liste(libres)} (${fr(restLoc, 0)} MW encore disponibles sur les postes du territoire).` : `${fr(ajout, 0)} MW à raccorder, compatibles avec les capacités restantes des postes.`);
   $("verdict").className = "panel verdict " + cls;
@@ -1133,9 +1160,11 @@ function setVue(v) {
       tab.setAttribute("aria-label", value);
     }
   }
-  $("v-elu").hidden = v === "expert"; $("v-expert").hidden = v !== "expert"; $("demo").hidden = v !== "demo";
+  $("v-elu").hidden = v === "expert"; $("v-expert").hidden = v !== "expert";
   document.body.classList.toggle("demo-on", v === "demo");
-  if (v === "demo") { demoStep = 0; demoGo(); } else clearHl();
+  const projOn = document.body.classList.contains("projection");
+  if (v === "demo") { demoStep = 0; if (!projOn) { projAuto = true; setProjection(true); } else demoGo(); }
+  else { clearHl(); if (projAuto) { projAuto = false; setProjection(false); } }
   if (v === "expert") { syncForm(); renderExpert(); }
 }
 for (const name of ["elu", "demo", "expert"]) for (const id of [`t-${name}`, `tb-${name}`]) $(id).onclick = () => setVue(name);
@@ -1144,27 +1173,51 @@ if (window.IntersectionObserver) new IntersectionObserver(([e]) => { const b = $
 // ---- démo
 const fmt = (x, d = 1) => fr(x, d);
 const DEMO = [
-  { p: "A", hl: "k-auto", h: "Aujourd'hui", t: r => `${fmt(K.Ppv_A + K.Peol_A, 0)} MW de solaire et d'éolien couvrent ${fmt(r.couverture_horaire * 100, 0)} % de la consommation, heure par heure.` },
-  { p: "B", hl: "k-ecr", h: "Doubler le solaire", t: r => `Le taux de couverture monte à ${fmt(r.couverture_horaire * 100, 0)} %, mais ${fmt(r.ecretement_part * 100)} % de la production serait perdue : au-delà de la limite de 5 %.` },
-  { p: "B_batterie", hl: "k-cout", h: "Ajouter la batterie de la fiche", t: r => `L'écrêtement retombe à ${fmt(r.ecretement_part * 100)} %… pour ${fmt(r.capex_batterie_EUR / 1e6, 0)} M€ d'investissement et ${fmt(r.om_annuel_EUR / 1e6)} M€ d'entretien par an : plus que ce que la batterie fait gagner.` },
-  { p: "reco_sobre", hl: "k-auto", h: "Miser sur l'éolien et les ballons d'eau chaude", t: r => `${fmt(r.couverture_horaire * 100, 0)} % de taux de couverture et ${fmt(r.ecretement_part * 100)} % d'écrêtement, sous la limite de 5 % chaque année, sans stockage.` },
-  { p: "reco_sobre", hl: "c-carte", h: "Où raccorder ?", t: () => { const s = ajoutsPostes().filter(p => p.depasse > 0.5).map(p => p.nom); return `${liste(s)} ${s.length > 1 ? "seraient saturés" : "serait saturé"} si l'on étendait le parc à l'identique : il faut orienter les nouveaux projets vers les postes encore libres.`; } },
+  { p: "A", h: "Aujourd'hui", t: r => `${fmt(K.Ppv_A + K.Peol_A, 0)} MW de solaire et d'éolien couvrent ${fmt(r.couverture_horaire * 100, 0)} % de la consommation, heure par heure.`,
+    figs: r => [figCouv(r, null, `Parc actuel : ${fmt(K.Ppv_A, 0)} MW de solaire et ${fmt(K.Peol_A, 0)} MW d'éolien.`),
+      { l: "Énergie produite", v: fmt(r.production_MWh / 1000, 0), u: "GWh/an", r: `Soit ${fmt(r.couverture * 100, 0)} % de la consommation de l'année, mais pas aux mêmes heures.` }] },
+  { p: "B", h: "Doubler le solaire", t: r => `Le taux de couverture monte à ${fmt(r.couverture_horaire * 100, 0)} %, mais ${fmt(r.ecretement_part * 100)} % de la production serait perdue : au-delà de la limite de 5 %.`,
+    figs: (r, av) => [figCouv(r, av), figEcr(r)] },
+  { p: "B_batterie", h: "Ajouter la batterie de la fiche", t: r => `L'écrêtement retombe à ${fmt(r.ecretement_part * 100)} %… pour ${fmt(r.capex_batterie_EUR / 1e6, 0)} M€ d'investissement et ${fmt(r.om_annuel_EUR / 1e6)} M€ d'entretien par an : plus que ce que la batterie fait gagner.`,
+    figs: (r, av, eco) => [
+      { l: "Investissement batterie", v: fmt(eco.capex / 1e6, 0), u: "M€", r: `+ ${fmt(eco.om / 1e6)} M€/an d'entretien, pour un gain de ${fmt(eco.gain / 1e6)} M€/an.`,
+        pill: eco.van < 0 ? ["ko", `✕ Non rentable : VAN ${fmt(eco.van / 1e6, 0)} M€ sur ${P.duree_analyse} ans`] : ["ok", `✓ Rentable : VAN ${fmt(eco.van / 1e6, 0)} M€`] },
+      figCouv(r, av, eco.pts > 0.05 ? `Soit ${fmt(eco.capex / 1e6 / eco.pts, 0)} M€ par point de couverture gagné.` : ""), figEcr(r)] },
+  { p: "reco_sobre", h: "Miser sur l'éolien et les ballons d'eau chaude", t: r => `${fmt(r.couverture_horaire * 100, 0)} % de taux de couverture et ${fmt(r.ecretement_part * 100)} % d'écrêtement, sous la limite de 5 % chaque année, sans stockage.`,
+    figs: (r, av) => [figCouv(r, av), figEcr(r), { l: "Investissement", v: "0", u: "M€", r: "Sans stockage : éolien +50 %, solaire +25 %, ballons d'eau chaude chauffés à midi.", pill: ["ok", "✓ Aucun investissement de stockage"] }] },
+  { p: "reco_sobre", hl: "b-carte", h: "Où raccorder ?", t: () => { const s = ajoutsPostes().filter(p => p.depasse > 0.5).map(p => p.nom); return `${liste(s)} ${s.length > 1 ? "seraient saturés" : "serait saturé"} si l'on étendait le parc à l'identique : il faut orienter les nouveaux projets vers les postes encore libres.`; },
+    figs: () => { const sat = ajoutsPostes().filter(p => p.depasse > 0.5), ajout = Math.max(0, (P.m_pv - 1) * K.Ppv_A) + Math.max(0, (P.m_eol - 1) * K.Peol_A);
+      return [{ l: "Puissance à raccorder", v: fmt(ajout, 0), u: "MW", r: "Solaire et éolien ajoutés par rapport au parc actuel." },
+        { l: "Postes saturés", v: fmt(sat.length, 0), u: `sur ${GEO.postes.length}`, r: "Si l'on étendait le parc existant à l'identique (capacités S3REnR).", pill: sat.length ? ["ko", "✕ Orienter les projets"] : ["ok", "✓ Capacités suffisantes"] },
+        { l: "Capacité encore disponible", v: fmt(GEO.postes.reduce((s, p) => s + p.restant_MW, 0), 0), u: "MW", r: "Restant à affecter sur les postes sources du territoire (Caparéseau)." }]; } },
 ];
+// Chiffres de la scène : taux de couverture avec l'écart à l'étape précédente, écrêtement avec son état
+const ecart = (x, n) => `${x >= 0 ? "+" : "−"}${fmt(Math.abs(x))} pt${Math.abs(x) >= 2 ? "s" : ""} vs étape ${n}`;
+const figCouv = (r, av, note) => ({ l: "Taux de couverture (heure par heure)", v: fmt(r.couverture_horaire * 100), u: "%",
+  d: av ? ecart((r.couverture_horaire - av.r.couverture_horaire) * 100, av.n) : "", r: note || "" });
+const figEcr = r => { const ok = lastAll.every(x => x.conforme);
+  return { l: "Énergie perdue (écrêtement)", v: fmt(r.ecretement_part * 100), u: "%", r: "Limite : 5 % de la production, chaque année météo.",
+    pill: ok ? ["ok", "✓ Sous 5 % chaque année"] : r.conforme ? ["warn", "! Dépassé certaines années"] : ["ko", "✕ Au-delà de 5 %"] }; };
+const resPreset = id => sim({ ...DEF, annee: P.annee, ...PRESETS[id].p }, P.annee);
 function clearHl() { document.querySelectorAll(".hl").forEach(e => e.classList.remove("hl")); }
-function demoGo() { const d = DEMO[demoStep]; appliquerPreset(d.p); clearHl(); const el = $(d.hl), cible = el.closest(".card") || el; cible.classList.add("hl");
-  $("demo-n").textContent = `Étape ${demoStep + 1} / ${DEMO.length}`; $("demo-h").textContent = d.h; $("demo-p").textContent = d.t(lastR);
-  demoCadrer(cible); }
-// Fait défiler la page pour que l'élément mis en avant et le verdict tiennent ensemble au-dessus du panneau d'étape
-// (si les deux ne tiennent pas, l'élément mis en avant passe en premier).
-function demoCadrer(cible) {
-  const marge = 12, haut = $("demo").getBoundingClientRect().top - marge, a = cible.getBoundingClientRect(), v = $("b-verdict").getBoundingClientRect();
-  let t = Math.min(a.top, v.top), b = Math.max(a.bottom, v.bottom);
-  if (b - t > haut - marge) { t = a.top; b = a.bottom; }
-  const y = b - t > haut - marge ? scrollY + t - marge : scrollY + t - marge - Math.max(0, (haut - marge - (b - t)) / 3);
-  scrollTo({ top: Math.max(0, y), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+$("demo-steps").innerHTML = DEMO.map((d, k) => `<li><button type="button" data-k="${k}" aria-label="Étape ${k + 1} : ${d.h}" title="${d.h}">${k + 1}</button></li>`).join("");
+$("demo-steps").onclick = e => { const b = e.target.closest("button"); if (b) { demoStep = +b.dataset.k; demoGo(); } };
+function demoGo() {
+  const d = DEMO[demoStep]; appliquerPreset(d.p); clearHl();
+  // écart mesuré par rapport à l'étape précédente qui portait un autre scénario
+  const prec = DEMO.slice(0, demoStep).map((x, k) => ({ x, k })).reverse().find(o => o.x.p !== d.p);
+  const av = prec ? { r: resPreset(prec.x.p), n: prec.k + 1 } : null;
+  for (const b of $("demo-steps").querySelectorAll("button")) { const k = +b.dataset.k; b.classList.toggle("vu", k < demoStep); if (k === demoStep) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current"); }
+  $("demo-h").textContent = d.h; $("demo-p").textContent = d.t(lastR);
+  $("demo-figs").innerHTML = d.figs(lastR, av, lastEco).map(f => `<div class="ds-fig"><span class="label">${f.l}</span><div class="v">${f.v}<span class="u">${f.u}</span></div>${f.d ? `<span class="d">${f.d}</span>` : ""}${f.pill ? `<span class="pill ${f.pill[0]}">${f.pill[1]}</span>` : ""}${f.r ? `<span class="r">${f.r}</span>` : ""}</div>`).join("");
+  const anim = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  if (d.hl) { const c = $(d.hl); c.classList.add("hl");
+    scrollTo({ top: Math.max(0, scrollY + c.getBoundingClientRect().top - document.querySelector(".ds-bar").offsetHeight - 12), behavior: anim }); }
+  else scrollTo({ top: Math.max(0, scrollY + $("demo").getBoundingClientRect().top - 8), behavior: anim });
 }
-// ---- mode projection (touche P ou bouton) : texte 18 px, réglages repliés ; l'état de la barre est rétabli à la sortie
-let sideAvantProj = null;
+// ---- mode projection (touche P ou bouton) : texte 18 px, réglages repliés ; l'état de la barre est rétabli à la sortie.
+// En vue Démo, la projection s'active d'elle-même (et se retire en quittant la Démo si c'est elle qui l'a activée).
+let sideAvantProj = null, projAuto = false;
 function setProjection(on) {
   if (on === document.body.classList.contains("projection")) return;
   document.body.classList.toggle("projection", on); $("proj").setAttribute("aria-pressed", on);
@@ -1178,6 +1231,7 @@ document.addEventListener("keydown", e => { if (e.target.closest("input,select,t
   if ((e.key === "p" || e.key === "P") && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); $("proj").click(); return; }
   if (vue === "demo" && (e.key === "ArrowRight" || e.key === " ")) { e.preventDefault(); $("demo-next").click(); }
   if (vue === "demo" && e.key === "ArrowLeft") $("demo-prev").click();
+  if (vue === "demo" && /^[1-9]$/.test(e.key) && +e.key <= DEMO.length) { demoStep = +e.key - 1; demoGo(); }
 });
 buildForm(); syncControls(); render();
 })();

@@ -40,7 +40,7 @@ for (const [w, h] of TAILLES) {
   }
   if (vues.includes("demo")) {
     await page.click("#t-demo"); await page.waitForTimeout(900);
-    const n = await page.evaluate(() => (document.getElementById("demo-n").textContent.match(/\/\s*(\d+)/) || [])[1]);
+    const n = await page.evaluate(() => document.querySelectorAll("#demo-steps button").length);
     for (let k = 1; k <= (+n || 5); k++) {
       if (k > 1) { await page.focus("body"); await page.keyboard.press("ArrowRight"); await page.waitForTimeout(1100); }
       await shot(`demo${k}`);

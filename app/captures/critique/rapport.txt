@@ -1,0 +1,5 @@
+Captures « critique » — 2026-11-01T21:48:25.088Z — réseau coupé
+1366x768 : 0 requête(s) http(s) bloquées
+1366x768 : 0 erreur(s) console
+1920x1080 : 0 requête(s) http(s) bloquées
+1920x1080 : 0 erreur(s) console
