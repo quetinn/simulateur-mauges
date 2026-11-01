@@ -1,9 +1,13 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Simulateur ENR Mauges</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87.5,500;87.5,600;87.5,700&family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<!-- Tout est local (vendor/) : l'application fonctionne hors ligne ; seules les tuiles du fond de carte viennent d'Internet. -->
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/echarts/echarts.min.js"></script>
 <style>
 /* Concept « Bocage & réseau » : relevé cartographique (calque froid, filets fins) × signalétique électrique (plaques, seuils).
    Layout : en-tête, commandes des barres latérales puis contenu en trois colonnes ; une colonne sous 900 px. */
@@ -219,6 +223,7 @@ body:not(.disp-open) #disp .side-h>.label{display:none}
   #disp{order:3;margin-top:20px}.content{order:2}#side{order:1;margin-bottom:20px}}
 .side-h{display:flex;align-items:center;justify-content:space-between;padding:0 4px 0 2px}
 .map{height:440px;width:100%;border:1px solid var(--line);border-radius:4px;position:relative;z-index:0;isolation:isolate;background:var(--bg)}
+.map.map-nobase{background:var(--panel)}
 .map .leaflet-control-layers{font-family:var(--f-body);font-size:12.5px}
 .poste-ico{background:none;border:0}
 .poste-ico svg{overflow:visible;display:block;cursor:pointer}
@@ -737,7 +742,7 @@ const axTxt = c => ({ color: c.ink2, fontSize: 11.5, fontFamily: c.font });
 // Dessine (ou met à jour) un graphique ; si le conteneur est masqué (autre vue), on attend qu'il devienne visible.
 function drawChart(id, option, height) {
   const el = $(id);
-  if (typeof echarts === "undefined") { el.innerHTML = '<p class="note" style="padding:12px">Bibliothèque de graphiques (ECharts) non chargée : vérifier la connexion Internet.</p>'; return; }
+  if (typeof echarts === "undefined") { el.innerHTML = '<p class="note" style="padding:12px">Bibliothèque de graphiques (ECharts) non chargée : vérifier que le fichier vendor/echarts/echarts.min.js est présent à côté de index.html.</p>'; return; }
   if (height) el.style.height = height + "px";
   let c = CH[id];
   if (!c) { c = CH[id] = { chart: null, opt: null, dirty: false };
@@ -931,7 +936,7 @@ function applyPostes() {
 }
 function renderCarte() {
   const el = $("c-carte");
-  if (typeof L === "undefined") { el.innerHTML = '<p class="note" style="padding:16px">Bibliothèque de carte (Leaflet) non chargée : vérifier la connexion Internet.</p>'; return; }
+  if (typeof L === "undefined") { el.innerHTML = '<p class="note" style="padding:16px">Bibliothèque de carte (Leaflet) non chargée : vérifier que le dossier vendor/leaflet/ est présent à côté de index.html.</p>'; return; }
   const css = getComputedStyle(document.documentElement), v = n => css.getPropertyValue(n).trim();
   const cSeuil = v("--seuil"), cBocage = v("--bocage"), cAccent = v("--accent"), cWarn = v("--warn"), cKo = v("--ko"), cPanel = v("--panel"), cInk = v("--ink");
 
@@ -946,12 +951,21 @@ function renderCarte() {
       "Plan (Esri rues)": esri("World_Street_Map", 19),
       "Sans fond de carte": L.layerGroup()
     };
-    const defaut = fonds["Relief (Esri topo)"]; defaut.addTo(mapL);
+    const defaut = fonds["Relief (Esri topo)"], sansFond = fonds["Sans fond de carte"], horsLigne = navigator.onLine === false;
+    (horsLigne ? sansFond : defaut).addTo(mapL); el.classList.toggle("map-nobase", horsLigne);
     L.control.layers(fonds, null, { collapsed: true, position: "topright" }).addTo(mapL);
+    // « Sans fond » : fond uni de panneau ; les contours et les postes suffisent à la lecture.
+    mapL.on("baselayerchange", e => el.classList.toggle("map-nobase", e.layer === sansFond));
     // Fond injoignable (hors ligne, réseau filtré) : on bascule sans fond, contours et postes restent lisibles.
-    let nErr = 0, basc = false;
-    defaut.on("tileerror", () => { if (basc || ++nErr < 6) return; basc = true; mapL.removeLayer(defaut); fonds["Sans fond de carte"].addTo(mapL);
-      const n = document.createElement("div"); n.className = "map-note"; n.textContent = "Fond de carte indisponible : contours et postes affichés seuls."; el.appendChild(n); });
+    let note = null;
+    const noter = () => { if (note) return; note = document.createElement("div"); note.className = "map-note"; note.textContent = "Fond de carte indisponible (pas d'Internet) : contours et postes affichés seuls."; el.appendChild(note); };
+    if (horsLigne) noter();
+    for (const fond of Object.values(fonds)) if (fond !== sansFond) {
+      let nErr = 0, nOk = 0;
+      fond.on("tileload", () => { nOk++; });
+      fond.on("tileerror", () => { if (++nErr < 4 || nOk > 0 || !mapL.hasLayer(fond)) return;
+        mapL.removeLayer(fond); sansFond.addTo(mapL); el.classList.add("map-nobase"); noter(); });
+    }
     mapCom = L.layerGroup().addTo(mapL); mapPostes = L.layerGroup().addTo(mapL);
     if (window.ResizeObserver) new ResizeObserver(() => { mapL.invalidateSize(); fitMap(); }).observe(el);
     setTimeout(() => mapL.invalidateSize(), 200);

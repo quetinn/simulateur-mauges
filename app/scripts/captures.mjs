@@ -25,6 +25,7 @@ for (const [w, h] of TAILLES) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, colorScheme: "light", locale: "fr-FR" });
   const bloquees = [], erreurs = [];
   await ctx.route(/^https?:/, r => { bloquees.push(r.request().url()); return reseau ? r.continue() : r.abort("internetdisconnected"); });
+  if (!reseau) await ctx.setOffline(true); // comme « Wi-Fi coupé » : navigator.onLine === false
   const page = await ctx.newPage();
   page.on("console", m => { if (m.type() === "error") erreurs.push(m.text()); });
   page.on("pageerror", e => erreurs.push("pageerror: " + e.message));
@@ -49,7 +50,7 @@ for (const [w, h] of TAILLES) {
     await page.click("#t-expert"); await page.waitForTimeout(900);
     await shot("expert"); await shot("expert_pleine", true);
   }
-  rapport.push(`${tag} : ${bloquees.length} requête(s) http(s) ${reseau ? "passées" : "bloquées"}${bloquees.length ? "\n  " + [...new Set(bloquees.map(u => new URL(u).host))].join("\n  ") : ""}\n${tag} : ${erreurs.length} erreur(s) console${erreurs.length ? "\n  " + erreurs.join("\n  ") : ""}`);
+  rapport.push(`${tag} : ${bloquees.length} requête(s) http(s) ${reseau ? "passées" : "bloquées"}${bloquees.length ? "\n  " + [...new Set(bloquees.map(u => new URL(u).host))].join("\n  ") : ""}\n${tag} : ${erreurs.length} erreur(s) console${erreurs.length ? "\n  " + [...new Set(erreurs)].map(e => `${e} (×${erreurs.filter(x => x === e).length})`).join("\n  ") : ""}`);
   await ctx.close();
 }
 await browser.close();
