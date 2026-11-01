@@ -1,0 +1,19 @@
+Captures « avant-hors-ligne » — 2026-11-01T21:22:56.398Z — réseau coupé
+1366x768 : 4 requête(s) http(s) bloquées
+  fonts.googleapis.com
+  unpkg.com
+  cdn.jsdelivr.net
+1366x768 : 4 erreur(s) console
+  Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+  Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+  Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+  Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+1920x1080 : 4 requête(s) http(s) bloquées
+  fonts.googleapis.com
+  unpkg.com
+  cdn.jsdelivr.net
+1920x1080 : 4 erreur(s) console
+  Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+  Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+  Failed to load resource: net::ERR_INTERNET_DISCONNECTED
+  Failed to load resource: net::ERR_INTERNET_DISCONNECTED

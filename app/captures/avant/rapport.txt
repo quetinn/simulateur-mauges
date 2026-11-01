@@ -1,0 +1,15 @@
+Captures « avant » — 2026-11-01T21:22:36.458Z — réseau ouvert
+1366x768 : 28 requête(s) http(s) passées
+  fonts.googleapis.com
+  unpkg.com
+  cdn.jsdelivr.net
+  fonts.gstatic.com
+  server.arcgisonline.com
+1366x768 : 0 erreur(s) console
+1920x1080 : 28 requête(s) http(s) passées
+  fonts.googleapis.com
+  unpkg.com
+  cdn.jsdelivr.net
+  fonts.gstatic.com
+  server.arcgisonline.com
+1920x1080 : 0 erreur(s) console
