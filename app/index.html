@@ -33,7 +33,6 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 .content{min-width:0;display:flex;flex-direction:column}
-body.demo-on{padding-bottom:140px;font-size:17px}
 html,body{background:var(--bg);color:var(--ink)}
 body{font-family:var(--f-body);font-size:15px;line-height:1.45;padding-inline:16px;padding-block:0 32px}
 h1,h2,h3{font-family:var(--f-display);font-stretch:87.5%;margin:0;text-wrap:balance;letter-spacing:-.005em}
@@ -59,8 +58,10 @@ header>.hdr-right{grid-column:3;grid-row:1}
 .bottom-controls{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:25;display:flex;align-items:center;justify-content:center;gap:16px;width:max-content;max-width:calc(100vw - 24px);padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:color-mix(in srgb,var(--panel) 94%,transparent);box-shadow:0 4px 18px rgba(0,0,0,.14);backdrop-filter:blur(8px)}
 .bottom-controls .label{white-space:nowrap}
 body{padding-bottom:76px}
-body.demo-on{padding-bottom:196px}
-body.demo-on #demo{bottom:84px}
+/* vue Démo : pas de barre du bas ; le panneau d'étape est seul en bas d'écran, la page défile pour qu'il ne masque rien */
+body.demo-on{padding-bottom:60vh;font-size:17px}
+body.demo-on .bottom-controls{display:none}
+body.demo-on .map{height:clamp(280px,calc(100vh - 500px),440px)}
 @media(max-width:900px){header{grid-template-columns:minmax(0,1fr) auto;gap:12px}
   .brand{grid-column:1/-1}
   header>.tabs{grid-column:1/-1;grid-row:2;justify-self:center}
@@ -150,7 +151,10 @@ svg .lbl{font-family:var(--f-body);font-size:11.5px;fill:var(--ink-2)}
 .legend button:hover{color:var(--ink)}
 .legend button.off{opacity:.45;text-decoration:line-through}
 .legend button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.kpis{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important;overflow:visible}
+/* 8 tuiles : 4 par ligne (grandeurs de la fiche, puis contraintes et coût), 2 par ligne si la place manque */
+#b-kpis{container-type:inline-size}
+.kpis{grid-template-columns:repeat(4,minmax(0,1fr))!important;overflow:visible}
+@container (max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 .kpis>.kpi{box-shadow:0 1px 0 var(--line-2)}
 .user-off{display:none!important}
 .row2.single{grid-template-columns:minmax(0,1fr)}
@@ -259,6 +263,19 @@ td.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-n
 .demo p{margin:4px 0 0;font-size:16px;opacity:.92}
 .demo .nav{display:flex;gap:6px;margin-left:auto}
 .demo button{background:transparent;border:1px solid currentColor;color:inherit;border-radius:3px;padding:6px 12px;cursor:pointer;font-weight:700}
+.demo button:focus-visible{outline-color:var(--panel)}
+/* mode projection (touche P) : texte de base 18 px, réglages repliés, petits textes agrandis d'autant */
+body.projection{font-size:18px}
+body.projection .label,body.projection .sec-h,body.projection th{font-size:13.5px}
+body.projection .kpi .r,body.projection .pill,body.projection .note,body.projection .card-h p,body.projection .legend,body.projection .hint,body.projection .map-help{font-size:15px}
+body.projection .kpis .kpi .v{font-size:clamp(32px,3vw,46px)}
+body.projection .oneline{font-size:18px}
+body.projection .card-h h2{font-size:23px}
+body.projection .demo h3{font-size:26px}
+body.projection .demo p{font-size:19px}
+body.projection .demo .n{font-size:14px}
+body.projection .commune-lbl .cl{font-size:13px}
+.proj-btn[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 .hl{outline:3px solid var(--seuil);outline-offset:-3px;transition:outline-color .2s}
 .expert-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
 .pform{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px 18px}
@@ -282,6 +299,7 @@ td.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-n
     <button role="tab" id="t-expert" aria-selected="false">Expert</button>
   </div>
   <div class="hdr-right">
+    <button type="button" class="iconbtn proj-btn" id="proj" aria-pressed="false" aria-keyshortcuts="P" title="Mode projection : texte agrandi, réglages repliés (touche P)">Projection</button>
     <div class="year-pick">
     <label class="label" for="annee">Année météo</label>
     <select id="annee"></select>
@@ -742,9 +760,10 @@ function cols() { const st = getComputedStyle(document.documentElement), v = n =
   return { ink: v("--ink"), ink2: v("--ink-2"), ink3: v("--ink-3"), line: v("--line"), line2: v("--line-2"), panel: v("--panel"), seuil: v("--seuil"), bocage: v("--bocage"), accent: v("--accent"),
     eol: v("--s-eol"), pv: v("--s-pv"), bat: v("--s-bat"), ecs: v("--s-ecs"), font: v("--f-body") }; }
 function ecBase(c) { return { animationDuration: 300, animationDurationUpdate: 300, useUTC: true, textStyle: { fontFamily: c.font, color: c.ink2 },
-  tooltip: { trigger: "axis", confine: true, backgroundColor: c.ink, borderWidth: 0, padding: [7, 9], textStyle: { color: c.panel, fontSize: 12.5, fontFamily: c.font },
+  tooltip: { trigger: "axis", confine: true, backgroundColor: c.ink, borderWidth: 0, padding: [7, 9], textStyle: { color: c.panel, fontSize: 12.5 * FS(), fontFamily: c.font },
     extraCssText: "border-radius:3px;line-height:1.4;font-variant-numeric:tabular-nums;white-space:normal", axisPointer: { type: "line", lineStyle: { color: c.ink3, type: "dashed" } } } }; }
-const axTxt = c => ({ color: c.ink2, fontSize: 11.5, fontFamily: c.font });
+const FS = () => document.body.classList.contains("projection") ? 1.25 : 1; // agrandissement des textes des graphiques en projection
+const axTxt = c => ({ color: c.ink2, fontSize: 11.5 * FS(), fontFamily: c.font });
 // Dessine (ou met à jour) un graphique ; si le conteneur est masqué (autre vue), on attend qu'il devienne visible.
 function drawChart(id, option, height) {
   const el = $(id);
@@ -799,9 +818,9 @@ function renderJour(s) {
       { name: N.ch, type: "bar", data: Array.from(j.ch, v => -r1(v)), barWidth: "55%", barGap: "-100%", itemStyle: { color: c.bat, borderRadius: 1 }, emphasis: { disabled: true } },
       { name: N.dch, type: "bar", data: Array.from(j.dch, v => -r1(v)), barWidth: "55%", barGap: "-100%", itemStyle: { color: "transparent", borderColor: c.bat, borderWidth: 1.5, borderRadius: 1 }, emphasis: { disabled: true } }] : []),
     { name: N.seuil, type: "line", symbol: "none", data: Array.from(seuil, r1), lineStyle: { color: c.seuil, width: 1.5, type: "dashed" }, itemStyle: { color: c.seuil },
-      endLabel: { show: true, formatter: "seuil 120 %", color: c.seuil, fontSize: 11.5, fontFamily: c.font }, markLine: { silent: true, symbol: "none", label: { show: false }, lineStyle: { color: c.ink3, width: 1, type: "solid" }, data: [{ yAxis: 0 }] }, emphasis: { disabled: true } },
+      endLabel: { show: true, formatter: "seuil 120 %", color: c.seuil, fontSize: 11.5 * FS(), fontFamily: c.font }, markLine: { silent: true, symbol: "none", label: { show: false }, lineStyle: { color: c.ink3, width: 1, type: "solid" }, data: [{ yAxis: 0 }] }, emphasis: { disabled: true } },
     { name: N.conso, type: "line", symbol: "none", data: Array.from(j.C, r1), lineStyle: { color: c.ink, width: 2.2 }, itemStyle: { color: c.ink },
-      endLabel: { show: true, formatter: "consommation", color: c.ink, fontSize: 11.5, fontFamily: c.font }, emphasis: { disabled: true } }
+      endLabel: { show: true, formatter: "consommation", color: c.ink, fontSize: 11.5 * FS(), fontFamily: c.font }, emphasis: { disabled: true } }
   ];
   const opt = { ...ecBase(c), legend: legSel("c-jour", names), grid: { left: 46, right: 98, top: 26, bottom: 28 },
     xAxis: { type: "category", data: HH.map(h => h + " h"), boundaryGap: bat, axisTick: { show: false }, axisLine: { onZero: false, lineStyle: { color: c.ink3 } },
@@ -973,7 +992,7 @@ function renderCarte() {
         mapL.removeLayer(fond); sansFond.addTo(mapL); el.classList.add("map-nobase"); noter(); });
     }
     mapCom = L.layerGroup().addTo(mapL); mapPostes = L.layerGroup().addTo(mapL);
-    if (window.ResizeObserver) new ResizeObserver(() => { mapL.invalidateSize(); fitMap(); }).observe(el);
+    if (window.ResizeObserver) new ResizeObserver(() => { mapL.invalidateSize(); mapFit = false; fitMap(); }).observe(el);
     setTimeout(() => mapL.invalidateSize(), 200);
   }
 
@@ -1099,17 +1118,36 @@ const fmt = (x, d = 1) => fr(x, d);
 const DEMO = [
   { p: "A", hl: "k-auto", h: "Aujourd'hui", t: r => `${fmt(K.Ppv_A + K.Peol_A, 0)} MW de solaire et d'éolien couvrent ${fmt(r.couverture_horaire * 100, 0)} % de la consommation, heure par heure.` },
   { p: "B", hl: "k-ecr", h: "Doubler le solaire", t: r => `Le taux de couverture monte à ${fmt(r.couverture_horaire * 100, 0)} %, mais ${fmt(r.ecretement_part * 100)} % de la production serait perdue : au-delà de la limite de 5 %.` },
-  { p: "B_batterie", hl: "k-cout", h: "Ajouter la batterie de la fiche", t: r => `L'écrêtement retombe à ${fmt(r.ecretement_part * 100)} %… pour ${fmt(r.capex_batterie_EUR / 1e6, 0)} M€ d'investissement et ${fmt(r.om_annuel_EUR / 1e6, 0)} M€ d'entretien par an : plus que ce que la batterie fait gagner.` },
-  { p: "reco_sobre", hl: "k-auto", h: "Miser sur l'éolien et les ballons d'eau chaude", t: r => `${fmt(r.couverture_horaire * 100, 0)} % de taux de couverture, sous les 5 % chaque année, sans stockage.` },
+  { p: "B_batterie", hl: "k-cout", h: "Ajouter la batterie de la fiche", t: r => `L'écrêtement retombe à ${fmt(r.ecretement_part * 100)} %… pour ${fmt(r.capex_batterie_EUR / 1e6, 0)} M€ d'investissement et ${fmt(r.om_annuel_EUR / 1e6)} M€ d'entretien par an : plus que ce que la batterie fait gagner.` },
+  { p: "reco_sobre", hl: "k-auto", h: "Miser sur l'éolien et les ballons d'eau chaude", t: r => `${fmt(r.couverture_horaire * 100, 0)} % de taux de couverture et ${fmt(r.ecretement_part * 100)} % d'écrêtement, sous la limite de 5 % chaque année, sans stockage.` },
   { p: "reco_sobre", hl: "c-carte", h: "Où raccorder ?", t: () => { const s = ajoutsPostes().filter(p => p.depasse > 0.5).map(p => p.nom); return `${liste(s)} ${s.length > 1 ? "seraient saturés" : "serait saturé"} si l'on étendait le parc à l'identique : il faut orienter les nouveaux projets vers les postes encore libres.`; } },
 ];
 function clearHl() { document.querySelectorAll(".hl").forEach(e => e.classList.remove("hl")); }
-function demoGo() { const d = DEMO[demoStep]; appliquerPreset(d.p); clearHl(); const el = $(d.hl); (el.closest(".card") || el).classList.add("hl");
+function demoGo() { const d = DEMO[demoStep]; appliquerPreset(d.p); clearHl(); const el = $(d.hl), cible = el.closest(".card") || el; cible.classList.add("hl");
   $("demo-n").textContent = `Étape ${demoStep + 1} / ${DEMO.length}`; $("demo-h").textContent = d.h; $("demo-p").textContent = d.t(lastR);
-  (el.closest(".card") || el).scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }
+  demoCadrer(cible); }
+// Fait défiler la page pour que l'élément mis en avant et le verdict tiennent ensemble au-dessus du panneau d'étape
+// (si les deux ne tiennent pas, l'élément mis en avant passe en premier).
+function demoCadrer(cible) {
+  const marge = 12, haut = $("demo").getBoundingClientRect().top - marge, a = cible.getBoundingClientRect(), v = $("b-verdict").getBoundingClientRect();
+  let t = Math.min(a.top, v.top), b = Math.max(a.bottom, v.bottom);
+  if (b - t > haut - marge) { t = a.top; b = a.bottom; }
+  const y = b - t > haut - marge ? scrollY + t - marge : scrollY + t - marge - Math.max(0, (haut - marge - (b - t)) / 3);
+  scrollTo({ top: Math.max(0, y), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+// ---- mode projection (touche P ou bouton) : texte 18 px, réglages repliés ; l'état de la barre est rétabli à la sortie
+let sideAvantProj = null;
+function setProjection(on) {
+  if (on === document.body.classList.contains("projection")) return;
+  document.body.classList.toggle("projection", on); $("proj").setAttribute("aria-pressed", on);
+  if (on) { sideAvantProj = sideOpen; setSide(false); } else if (sideAvantProj !== null) setSide(sideAvantProj);
+  render(); if (vue === "demo") demoGo();
+}
+$("proj").onclick = () => setProjection(!document.body.classList.contains("projection"));
 $("demo-next").onclick = () => { demoStep = Math.min(DEMO.length - 1, demoStep + 1); demoGo(); };
 $("demo-prev").onclick = () => { demoStep = Math.max(0, demoStep - 1); demoGo(); };
-document.addEventListener("keydown", e => { if (e.target.closest("input,select")) return;
+document.addEventListener("keydown", e => { if (e.target.closest("input,select,textarea")) return;
+  if ((e.key === "p" || e.key === "P") && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); $("proj").click(); return; }
   if (vue === "demo" && (e.key === "ArrowRight" || e.key === " ")) { e.preventDefault(); $("demo-next").click(); }
   if (vue === "demo" && e.key === "ArrowLeft") $("demo-prev").click();
 });
