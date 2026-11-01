@@ -413,6 +413,14 @@ body.projection .commune-lbl .cl{font-size:13px}
     <div class="ec" id="c-traj" style="height:360px" role="img" aria-label="Carte de chaleur du taux de couverture selon le solaire et l'éolien"></div>
     <div class="legend" id="lg-traj"></div>
     <p class="hint" id="traj-note"></p></div>
+  <div class="panel card" id="b-tornade"><div class="card-h"><div><h2>Sensibilité des résultats</h2>
+      <p>Écart au scénario de référence quand une seule hypothèse prend sa valeur basse ou haute. <span id="torn-sub"></span></p></div>
+    <div class="ctl-row"><div class="seg" id="torn-sc" role="group" aria-label="Scénario de référence"><button data-v="B">B + batterie</button><button data-v="C">C + batterie</button></div>
+      <div class="seg" id="torn-hz" role="group" aria-label="Consommation"><button data-v="actuel">Aujourd'hui</button><button data-v="2035">2035</button></div>
+      <div class="seg" id="torn-ind" role="group" aria-label="Indicateur"><button data-v="couverture_horaire">Taux de couverture</button><button data-v="ecretement_part">Écrêtement</button></div></div></div>
+    <div class="ec" id="c-tornade" style="height:380px" role="img" aria-label="Tornade : effet de chaque hypothèse sur l'indicateur choisi"></div>
+    <div class="legend" id="lg-tornade"></div>
+    <p class="hint">Source : précalcul Python (12_tornade.py), moyennes 2021-2025. Les hypothèses de batterie ne s'appliquent qu'aux scénarios avec batterie.</p></div>
   <div class="panel card" id="b-hyp"><div class="card-h"><div><h2>Toutes les hypothèses</h2><p>Formulaire généré depuis le schéma des paramètres exporté par Python (valeur, bornes, unité, source). Les valeurs modifiées sont surlignées.</p></div>
     <button class="linkbtn" id="reset">Tout réinitialiser</button></div>
     <div class="pform" id="pform"></div></div>
@@ -888,7 +896,7 @@ let mapL = null, mapCom = null, mapPostes = null, mapFit = false;
 const BLOCS = [
   ["Textes", [["b-resume", "Résumé du scénario"], ["b-verdict", "Verdict"]]],
   ["Graphiques et carte", [["b-jour", "Journée type"], ["b-carte", "Carte : communes et postes sources"], ["b-mois", "Bilan mois par mois"]]],
-  ["Vue expert", [["b-heures", "Deux semaines heure par heure"], ["b-traj", "Trajectoires"], ["b-hyp", "Toutes les hypothèses"], ["b-annees", "Indicateurs 2021-2025"]]]
+  ["Vue expert", [["b-heures", "Deux semaines heure par heure"], ["b-traj", "Trajectoires"], ["b-tornade", "Sensibilité (tornade)"], ["b-hyp", "Toutes les hypothèses"], ["b-annees", "Indicateurs 2021-2025"]]]
 ];
 const MENU_IDS = BLOCS.flatMap(g => g[1].map(x => x[0]));
 const KPI_IDS = ["k-prod", "k-auto", "k-surplus", "k-deficit","k-ecr", "k-vig", "k-pointes", "k-cout"];
@@ -1142,7 +1150,7 @@ function renderExpert() {
   $("v-sem").textContent = dt.toLocaleDateString("fr-FR", { day: "numeric", month: "long" }); $("hx-sub").textContent = `Année ${P.annee}, pas horaire, heure UTC`;
   setLegend("c-heures", "lg-heures", [[N.eol, "background:var(--s-eol)", "a"], [N.pv, "background:var(--s-pv)", "a"], [N.conso, "background:var(--ink)"], [N.seuil, "background:var(--seuil)"], ...(bat ? [[N.soc, "background:var(--s-bat)"]] : [])]);
   drawChart("c-heures", opt, H);
-  renderTraj();
+  renderTraj(); renderTornade();
   const colsT = [["couverture_horaire", "Taux de couverture h/h", 100, 1, "%"], ["couverture", "Prod. / conso", 100, 1, "%"], ["ecretement_part", "Écrêtement", 100, 1, "%"], ["heures_vigilance", "Heures de vigilance", 1, 0, "h"], ["pointe_injection_MW", "Pointe d'injection", 1, 0, "MW"], ["pointe_soutirage_MW", "Pointe d'appel", 1, 0, "MW"], ["surplus_exporte_MWh", "Surplus exporté", 1e-3, 1, "GWh"], ["deficit_importe_MWh", "Achat au réseau", 1e-3, 1, "GWh"], ["bat_cycles", "Cycles batterie", 1, 0, ""]];
   $("t-annees").innerHTML = `<thead><tr><th>Année</th>${colsT.map(c => `<th style="text-align:right">${c[1]}${c[4] ? ` (${c[4]})` : ""}</th>`).join("")}</tr></thead><tbody>${META.annees.map((a, i) => `<tr${a === P.annee ? ' style="background:var(--accent-weak)"' : ""}><td class="mono">${a}${a === META.annee_typique ? " ·typ." : ""}</td>${colsT.map(c => `<td class="num">${fr(lastAll[i][c[0]] * c[2], c[3])}</td>`).join("")}</tr>`).join("")}</tbody>`;
 }
@@ -1193,6 +1201,31 @@ function renderTraj() {
     (traj.paquet.includes("batterie") ? "Batterie : taille minimale pour tenir 5 % chaque année, pilotage « seulement les excès ». " : "") + "Un clic applique le scénario avec les autres hypothèses à leur valeur par défaut. Source : précalcul Python (13_trajectoire.py).";
 }
 for (const [id, k] of [["traj-paquet", "paquet"], ["traj-hz", "hz"]]) for (const b of $(id).children) b.onclick = () => { traj[k] = b.dataset.v; renderTraj(); };
+// ---- sensibilité (tornade, précalcul Python) : écart au scénario de référence quand une hypothèse varie seule
+const TORN = PRECALC.tornade, TORN_NOM = { B: "B + batterie (seulement les excès)", C: "C + batterie (seulement les excès)" };
+let torn = { sc: "B", hz: "actuel", ind: "couverture_horaire" };
+function renderTornade() {
+  for (const [id, k] of [["torn-sc", "sc"], ["torn-hz", "hz"], ["torn-ind", "ind"]]) for (const b of $(id).children) b.setAttribute("aria-pressed", b.dataset.v === torn[k]);
+  const c = cols(), k = torn.ind, rows = TORN.filter(t => t.scenario === torn.sc && t.famille === torn.hz)
+    .map(t => ({ t, bas: (t[k + "_bas"] - t[k + "_ref"]) * 100, haut: (t[k + "_haut"] - t[k + "_ref"]) * 100 }))
+    .sort((a, b) => Math.max(Math.abs(a.bas), Math.abs(a.haut)) - Math.max(Math.abs(b.bas), Math.abs(b.haut)));
+  const ref = rows.length ? rows[0].t[k + "_ref"] * 100 : 0, nomInd = k === "couverture_horaire" ? "taux de couverture" : "écrêtement";
+  const dec = k === "couverture_horaire" ? 1 : 2, m = Math.max(0.01, ...rows.map(o => Math.max(Math.abs(o.bas), Math.abs(o.haut)))) * 1.35;
+  const pts = v => `${v >= 0 ? "+" : "−"}${fr(Math.abs(v), dec)} pt`;
+  const bar = (name, key, color) => ({ name, type: "bar", data: rows.map(o => +o[key].toFixed(dec + 1)), barGap: "15%", barCategoryGap: "32%", itemStyle: { color, borderRadius: 1 },
+    label: { show: true, position: "outside", formatter: q => Math.abs(q.value) >= 0.5 * 10 ** -dec ? pts(q.value) : "", color: c.ink2, fontSize: 11 * FS(), fontFamily: c.font }, emphasis: { disabled: true } });
+  const opt = { ...ecBase(c), legend: { show: false }, grid: { left: 16, right: 56, top: 8, bottom: 30, containLabel: true },
+    xAxis: { type: "value", name: `écart de ${nomInd} (points)`, nameLocation: "middle", nameGap: 24, nameTextStyle: axTxt(c), min: -m, max: m, axisLabel: { ...axTxt(c), formatter: v => (v > 0 ? "+" : v < 0 ? "−" : "") + fr(Math.abs(v), m < 0.4 ? 2 : m < 3 ? 1 : 0) }, splitLine: { lineStyle: { color: c.line2 } } },
+    yAxis: { type: "category", data: rows.map(o => o.t.facteur), axisTick: { show: false }, axisLine: { lineStyle: { color: c.ink } }, axisLabel: { ...axTxt(c), width: 290, overflow: "break" } },
+    series: [bar("valeur basse", "bas", hexA(c.ink3, .6)), bar("valeur haute", "haut", c.accent)] };
+  opt.tooltip.axisPointer = { type: "shadow", shadowStyle: { color: hexA(c.ink3, .1) } };
+  opt.tooltip.formatter = ps => { const o = rows[ps[0].dataIndex], t = o.t, v = x => fr(x * 100, k === "couverture_horaire" ? 1 : 2);
+    return `<b>${t.facteur}</b><br>valeur basse : ${v(t[k + "_bas"])} % (${pts(o.bas)})<br>valeur haute : ${v(t[k + "_haut"])} % (${pts(o.haut)})<br>référence : ${v(t[k + "_ref"])} %`; };
+  drawChart("c-tornade", opt, 70 + rows.length * 34 * FS());
+  $("torn-sub").textContent = `Référence : ${TORN_NOM[torn.sc]}, ${torn.hz === "2035" ? "consommation 2035" : "consommation actuelle"} — ${nomInd} ${fr(ref, k === "couverture_horaire" ? 1 : 2)} % (moyenne 2021-2025).`;
+  $("lg-tornade").innerHTML = `<span><i class="a" style="background:var(--ink-3);opacity:.6"></i>valeur basse (premier terme du libellé)</span><span><i class="a" style="background:var(--accent)"></i>valeur haute (second terme)</span>`;
+}
+for (const [id, key] of [["torn-sc", "sc"], ["torn-hz", "hz"], ["torn-ind", "ind"]]) for (const b of $(id).children) b.onclick = () => { torn[key] = b.dataset.v; renderTornade(); };
 function buildForm() {
   const grp = { meteo: "Météo et volume", production: "Production", ecretement: "Écrêtement et seuils", conso: "Consommation 2035", ve: "Véhicules électriques", pac: "Pompes à chaleur", ecs: "Ballons d'eau chaude", batterie: "Batterie", economie: "Économie" };
   let h = "", cur = "";
