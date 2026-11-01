@@ -402,7 +402,7 @@ body.projection .commune-lbl .cl{font-size:13px}
   <span>Sources : ODRÉ, Enedis, RTE Eco2Mix, Météo-France, INSEE, Caparéseau. Économie : NREL 2025, RTE, CRE (Projet 6 en sensibilité).</span>
   <span>Fond de carte : Esri / OpenStreetMap contributeurs (sélecteur sur la carte), via Leaflet. Contours des communes : IGN/INSEE.</span>
 </div>
-<nav class="bottom-controls" aria-label="Commandes de navigation et année météo">
+<nav class="bottom-controls" id="bottom-controls" aria-label="Commandes de navigation et année météo (rappel)" hidden inert>
   <div class="tabs" role="tablist" aria-label="Vue">
     <button role="tab" id="tb-elu" aria-selected="true">Élu</button>
     <button role="tab" id="tb-demo" aria-selected="false">Démo</button>
@@ -1137,6 +1137,8 @@ function setVue(v) {
   if (v === "expert") { syncForm(); renderExpert(); }
 }
 for (const name of ["elu", "demo", "expert"]) for (const id of [`t-${name}`, `tb-${name}`]) $(id).onclick = () => setVue(name);
+// Rappel des onglets et de l'année en bas d'écran : seulement quand l'en-tête est sorti de l'écran (sinon doublon qui masque le contenu).
+if (window.IntersectionObserver) new IntersectionObserver(([e]) => { const b = $("bottom-controls"), voir = !e.isIntersecting; b.hidden = !voir; b.inert = !voir; }).observe(document.querySelector("header"));
 // ---- démo
 const fmt = (x, d = 1) => fr(x, d);
 const DEMO = [
