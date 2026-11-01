@@ -1,0 +1,1098 @@
+<title>Simulateur ENR Mauges</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87.5,500;87.5,600;87.5,700&family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<style>
+/* Concept « Bocage & réseau » : relevé cartographique (calque froid, filets fins) × signalétique électrique (plaques, seuils).
+   Layout : en-tête, commandes des barres latérales puis contenu en trois colonnes ; une colonne sous 900 px. */
+:root{
+  --bg:#F1F7F1; --panel:#FFFFFF; --ink:#14222B; --ink-2:#4A5A63; --ink-3:#6E7C82; --line:#D6DFDA; --line-2:#E6ECE9;
+  --accent:#1F5F8B; --accent-weak:#E3EDF5; --bocage:#2F5D3A; --bocage-weak:#E4EEE6; --seuil:#C2410C;
+  --s-pv:#EDA100; --s-eol:#2A78D6; --s-ecs:#1BAF7A; --s-ve:#EB6834; --s-bat:#6250D6; --s-pac:#E87BA4;
+  --ok:#0B7A0B; --warn:#9A6A00; --ko:#C23434; --ok-bg:#E5F4E5; --warn-bg:#FBF1D9; --ko-bg:#FBE6E6;
+  --f-display:"Archivo","Arial Narrow",Arial,sans-serif; --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --night:#C9D3DC; --day:#F7E7B4;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121816; --panel:#1A2220; --ink:#E8EEEB; --ink-2:#A9B6B1; --ink-3:#7F8C88; --line:#2C3633; --line-2:#232C29;
+  --accent:#5B9BD0; --accent-weak:#1E2E3A; --bocage:#7FB08A; --bocage-weak:#1F2C24; --seuil:#F08A4B;
+  --s-pv:#C98500; --s-eol:#3987E5; --s-ecs:#199E70; --s-ve:#D95926; --s-bat:#9085E9; --s-pac:#D55181;
+  --ok:#5BC85B; --warn:#F2C14E; --ko:#EF7272; --ok-bg:#1C2E1C; --warn-bg:#2E2816; --ko-bg:#321C1C; --night:#24303A; --day:#4A4228; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121816; --panel:#1A2220; --ink:#E8EEEB; --ink-2:#A9B6B1; --ink-3:#7F8C88; --line:#2C3633; --line-2:#232C29;
+  --accent:#5B9BD0; --accent-weak:#1E2E3A; --bocage:#7FB08A; --bocage-weak:#1F2C24; --seuil:#F08A4B;
+  --s-pv:#C98500; --s-eol:#3987E5; --s-ecs:#199E70; --s-ve:#D95926; --s-bat:#9085E9; --s-pac:#D55181;
+  --ok:#5BC85B; --warn:#F2C14E; --ko:#EF7272; --ok-bg:#1C2E1C; --warn-bg:#2E2816; --ko-bg:#321C1C; --night:#24303A; --day:#4A4228; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+.content{min-width:0;display:flex;flex-direction:column}
+body.demo-on{padding-bottom:140px;font-size:17px}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--f-body);font-size:15px;line-height:1.45;padding-inline:16px;padding-block:0 32px}
+h1,h2,h3{font-family:var(--f-display);font-stretch:87.5%;margin:0;text-wrap:balance;letter-spacing:-.005em}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono)}
+.u{font-family:var(--f-mono);font-size:.62em;color:var(--ink-2);font-weight:400;letter-spacing:0;margin-left:.15em}
+.label{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2);font-weight:700}
+.wrap{max-width:1360px;margin:0 auto}
+/* en-tête */
+header{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px 28px;padding-top:18px}
+.brand{display:flex;flex-direction:column;gap:2px;min-width:0}
+.brand h1{font-size:clamp(22px,2.6vw,30px);font-weight:700}
+.brand h1 span{color:var(--bocage)}
+.tabs{display:flex;gap:2px;border:1px solid var(--line);border-radius:4px;padding:2px;background:var(--panel)}
+.tabs button{border:0;background:none;padding:6px 14px;border-radius:3px;cursor:pointer;color:var(--ink-2);font-weight:700}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--panel)}
+.hdr-right{justify-self:end;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.brand{grid-column:1}
+header>.tabs{grid-column:2;grid-row:1}
+header>.hdr-right{grid-column:3;grid-row:1}
+.year-pick{display:flex;gap:10px;align-items:center}
+.bottom-controls{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:25;display:flex;align-items:center;justify-content:center;gap:16px;width:max-content;max-width:calc(100vw - 24px);padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:color-mix(in srgb,var(--panel) 94%,transparent);box-shadow:0 4px 18px rgba(0,0,0,.14);backdrop-filter:blur(8px)}
+.bottom-controls .label{white-space:nowrap}
+body{padding-bottom:76px}
+body.demo-on{padding-bottom:196px}
+body.demo-on #demo{bottom:84px}
+@media(max-width:900px){header{grid-template-columns:minmax(0,1fr) auto;gap:12px}
+  .brand{grid-column:1/-1}
+  header>.tabs{grid-column:1/-1;grid-row:2;justify-self:center}
+  header>.hdr-right{grid-column:1/-1;grid-row:3;justify-self:center}
+  .bottom-controls{gap:8px;padding:6px 8px}
+  .bottom-controls .tabs button{padding:5px 8px;font-size:13px}
+  .bottom-controls .year-pick{gap:5px}
+  .bottom-controls .label{font-size:10px}
+  .bottom-controls select{max-width:94px}}
+select{border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:6px 8px}
+.iconbtn{border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:6px 10px;cursor:pointer;font-weight:700}
+/* grille */
+.grid{--l:340px;--r:0px;display:grid;grid-template-columns:var(--l) minmax(0,1fr) var(--r);grid-template-rows:auto auto;column-gap:0;margin-top:18px}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:4px}
+/* rail */
+aside{display:flex;flex-direction:column;gap:14px;align-self:start;position:sticky;top:12px}
+@media (max-width:900px){aside{position:static}}
+aside section{padding:14px 14px 16px;display:flex;flex-direction:column;gap:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:3px;padding:5px 9px;cursor:pointer;font-weight:700;font-size:13.5px}
+.chip[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--panel)}
+.ctl{display:flex;flex-direction:column;gap:6px}
+.ctl-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ctl-h b{font-weight:700}
+.ctl-v{font-family:var(--f-mono);font-size:13px;color:var(--ink)}
+.ctl small{color:var(--ink-3);font-size:12.5px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--line)}
+input[type=range]::-moz-range-track{height:3px;background:var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6.5px;background:var(--panel);border:2px solid var(--ink);border-radius:2px}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;background:var(--panel);border:2px solid var(--ink);border-radius:2px}
+.ticks{position:relative;height:14px;margin-top:-4px}
+.ticks span{position:absolute;transform:translateX(-50%);font-family:var(--f-mono);font-size:10px;color:var(--ink-3)}
+.ticks span::before{content:"";display:block;width:1px;height:4px;background:var(--ink-3);margin:0 auto 1px}
+.sol{border-top:1px solid var(--line-2);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+.sol:first-of-type{border-top:0;padding-top:0}
+.sol-h{display:flex;align-items:center;gap:10px}
+.sol-h .sw{width:10px;height:10px;border-radius:2px;flex:none}
+.sol-h b{flex:1}
+.switch{position:relative;width:36px;height:20px;flex:none}
+.switch input{opacity:0;width:100%;height:100%;margin:0;position:absolute;cursor:pointer}
+.switch span{position:absolute;inset:0;border:1.5px solid var(--ink-3);border-radius:10px;pointer-events:none}
+.switch span::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:var(--ink-3);top:2.5px;left:3px;transition:transform .15s}
+.switch input:checked+span{background:var(--ink);border-color:var(--ink)}
+.switch input:checked+span::after{transform:translateX(15px);background:var(--panel)}
+.switch input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.seg{display:flex;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.seg button{flex:1;border:0;background:var(--panel);padding:5px 6px;cursor:pointer;font-size:13px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent-weak);color:var(--accent);font-weight:700}
+.sub{display:flex;flex-direction:column;gap:8px;padding-left:20px}
+.linkbtn{background:none;border:1px dashed var(--accent);color:var(--accent);border-radius:3px;padding:5px 8px;cursor:pointer;font-weight:700;font-size:13px;align-self:flex-start}
+/* contenu */
+main{display:flex;flex-direction:column;gap:20px;min-width:0}
+.oneline{font-size:15.5px;color:var(--ink-2)}
+.oneline b{color:var(--ink)}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0}
+@media (max-width:1180px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:600px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{padding:14px 16px 16px;border-right:1px solid var(--line-2);display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi:last-child{border-right:0}
+.kpi .v{font-family:var(--f-display);font-stretch:87.5%;font-weight:700;font-size:clamp(28px,3vw,42px);line-height:1.05;font-variant-numeric:tabular-nums}
+.kpi .r{font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.kpi .r b{color:var(--ink-2);font-weight:400}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;padding:2px 7px;border-radius:2px;align-self:flex-start}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}.pill.ko{background:var(--ko-bg);color:var(--ko)}.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.gauge{margin-top:6px}
+.verdict{display:flex;gap:12px;padding:14px 16px;border-left:3px solid var(--ok)}
+.verdict.ko{border-left-color:var(--ko)}.verdict.warn{border-left-color:var(--warn)}
+.verdict .ic{font-family:var(--f-mono);font-weight:700;font-size:18px;line-height:1.2}
+.verdict p{margin:0;max-width:85ch}
+.row2{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:20px}
+@media (max-width:1180px){.row2{grid-template-columns:minmax(0,1fr)}}
+.card{padding:16px}
+.card-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.card-h h2{font-size:19px;font-weight:700}
+.card-h p{margin:2px 0 0;color:var(--ink-3);font-size:13px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--ink-2);margin-top:6px}
+.legend i{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}
+.legend i.a{height:9px;border-radius:1px}
+svg text{font-family:var(--f-mono);font-size:10.5px;fill:var(--ink-3)}
+svg .lbl{font-family:var(--f-body);font-size:11.5px;fill:var(--ink-2)}
+.chart{width:100%;height:auto;display:block}
+.ec{width:100%;min-height:200px}
+.legend button{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;border-radius:2px}
+.legend button:hover{color:var(--ink)}
+.legend button.off{opacity:.45;text-decoration:line-through}
+.legend button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important;overflow:visible}
+.kpis>.kpi{box-shadow:0 1px 0 var(--line-2)}
+.user-off{display:none!important}
+.row2.single{grid-template-columns:minmax(0,1fr)}
+#presets{width:100%}
+#preset_desc{margin:6px 0 0}
+.maptog{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}
+.iconbtn.burger{display:inline-flex;align-items:center;gap:8px}
+.iconbtn.burger svg{display:block}
+.hint{font-size:12px;color:var(--ink-3);margin:2px 0 0}
+.maptogs{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center}
+.maptog{position:relative}
+.map-help{margin:0 0 8px;padding:8px 10px;border-left:3px solid var(--accent);background:var(--accent-weak);color:var(--ink-2);font-size:13px}
+.map-info{border:0;background:none;color:var(--ink-3);padding:2px 4px;cursor:pointer;line-height:1}
+.map-info:hover,.map-info[aria-expanded="true"]{color:var(--accent)}
+.map-info svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;stroke-width:1.5}
+.sec-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.sec-h{font-family:var(--f-body);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2);font-weight:700;margin:0 0 6px}
+.sec-bar .sec-h{margin:0}
+.kpi{position:relative}
+.kpis .kpi .v{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:.12em;font-size:clamp(26px,2.5vw,36px)}
+.k-head{display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
+.k-tools{display:inline-flex;gap:0;flex:none;margin:-5px -7px 0 0}
+.k-btn{border:0;background:none;color:var(--ink-3);width:26px;height:26px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.k-btn:hover,.k-btn[aria-expanded="true"]{background:var(--line-2);color:var(--ink)}
+.k-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.k-btn svg{display:block;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.k-eye .e-closed{display:none}
+.k-min .k-eye .e-open{display:none}.k-min .k-eye .e-closed{display:block}
+.k-pop{position:absolute;left:0;top:34px;width:min(290px,86vw);z-index:50;background:var(--ink);color:var(--panel);font-size:12.5px;line-height:1.45;padding:9px 11px;border-radius:4px;box-shadow:0 8px 22px rgba(0,0,0,.28);text-transform:none;letter-spacing:0;font-weight:400}
+.k-pop b{font-weight:700}
+.kpis:empty{display:none}
+.kpis-off{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.kpis-off:empty{display:none}
+.kpi.k-min{flex-direction:row;align-items:center;padding:3px 4px 3px 12px;border:1px dashed var(--line);border-radius:4px;background:var(--panel)}
+.kpi.k-min>:not(.k-head){display:none}
+.kpi.k-min .k-head{align-items:center;gap:10px}
+.kpi.k-min .k-tools{margin:0}
+.kpi.k-min .k-info{display:none}
+.kpi.k-min .label{color:var(--ink-3)}
+.commune-lbl .cd{display:block;font-weight:400;font-size:10.5px;color:var(--ink-2)}
+/* barre latérale repliable : elle pousse le contenu, elle ne le recouvre pas */
+.grid{transition:grid-template-columns .25s ease}
+.rail-tools{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;position:sticky;top:12px;z-index:10;align-self:start}
+.rail-tools button{border:1px solid var(--line);background:var(--panel);color:var(--ink-2);width:28px;height:28px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.rail-tools button:hover{background:var(--line-2);color:var(--ink)}
+.rail-tools button svg{display:block;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#side,#disp{min-width:0;max-height:calc(100vh - 24px);overflow:auto;scrollbar-width:thin;transition:opacity .2s ease}
+#side{margin-right:20px}
+#disp{margin-left:20px}
+body.side-closed .grid{--l:38px}
+body.side-closed #side{overflow:hidden;margin-right:0}
+body.side-closed #side>section{display:none}
+body.side-closed #side .side-h>.label{display:none}
+body.disp-open .grid{--r:300px}
+body:not(.disp-open) .grid{--r:38px}
+body:not(.disp-open) #disp{overflow:hidden;margin-left:0}
+body:not(.disp-open) #disp>section{display:none}
+body:not(.disp-open) #disp .side-h>.label{display:none}
+.dpanel{padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px}
+.dpanel .dg{margin-top:6px}
+.dpanel .dg>.label{display:block;margin-bottom:2px}
+.dpanel .mrow{display:flex;gap:10px;align-items:center;padding:5px 0;cursor:pointer;font-size:14px}
+.dpanel .mrow input{width:17px;height:17px;accent-color:var(--ink);margin:0;flex:none}
+.dpanel .df{display:flex;gap:8px;padding-top:6px;border-top:1px solid var(--line)}
+.dpanel .df button{flex:1}
+@media (max-width:900px){#side,#disp{max-height:none;margin:0}
+  body.side-closed .grid,body.disp-open .grid{grid-template-columns:minmax(0,1fr)}
+  body.side-closed #side{display:flex;margin-bottom:0}
+  body:not(.disp-open) #disp{display:flex;margin-top:20px}
+  #disp{order:3;margin-top:20px}.content{order:2}#side{order:1;margin-bottom:20px}}
+.side-h{display:flex;align-items:center;justify-content:space-between;padding:0 4px 0 2px}
+.map{height:440px;width:100%;border:1px solid var(--line);border-radius:4px;position:relative;z-index:0;isolation:isolate;background:var(--bg)}
+.map .leaflet-control-layers{font-family:var(--f-body);font-size:12.5px}
+.poste-ico{background:none;border:0}
+.poste-ico svg{overflow:visible;display:block;cursor:pointer}
+.commune-lbl{background:none;border:0}
+.commune-lbl .cl{display:inline-block;white-space:nowrap;transform:translate(calc(-50% + var(--dx,0px)),calc(-50% + var(--dy,0px)));padding:2px 4px;border-radius:2px;background:var(--panel);font-family:var(--f-body);font-weight:700;font-size:11px;color:var(--ink);pointer-events:none}
+.commune-beaupreau .cl{--dx:45px;--dy:44px}
+.commune-chemille .cl{--dx:50px;--dy:14px}
+.commune-oree .cl{--dx:-28px;--dy:-8px}
+.commune-montrevault .cl{--dx:-55px;--dy:27px}
+.commune-mauges .cl{--dx:38px;--dy:-13px}
+.commune-sevremoine .cl{--dx:-32px;--dy:57px}
+@media(max-width:600px){
+  .commune-beaupreau .cl{--dx:0px}
+  .commune-chemille .cl{--dx:10px}
+  .commune-oree .cl{--dx:20px}
+  .commune-montrevault .cl{--dx:-35px}
+  .commune-mauges .cl{--dx:0px;--dy:-42px}
+}
+.map-note{position:absolute;left:8px;bottom:22px;z-index:800;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:3px 8px;font-size:12px;color:var(--ink-2)}
+
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--panel);font-size:12.5px;padding:7px 9px;border-radius:3px;z-index:20;font-variant-numeric:tabular-nums;line-height:1.4;max-width:260px}
+.plate{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--ink);padding:1px 5px;border-radius:2px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line-2);vertical-align:top}
+th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+td.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto}
+.foot{margin-top:28px;color:var(--ink-3);font-size:12.5px;display:flex;flex-wrap:wrap;gap:6px 18px}
+/* démo */
+.demo{position:fixed;inset:auto 16px 16px 16px;max-width:880px;margin:0 auto;background:var(--ink);color:var(--panel);border-radius:4px;padding:16px 18px;z-index:30;display:flex;gap:16px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.demo .n{font-family:var(--f-mono);font-size:12px;opacity:.75;white-space:nowrap}
+.demo h3{font-size:22px;color:var(--panel)}
+.demo p{margin:4px 0 0;font-size:16px;opacity:.92}
+.demo .nav{display:flex;gap:6px;margin-left:auto}
+.demo button{background:transparent;border:1px solid currentColor;color:inherit;border-radius:3px;padding:6px 12px;cursor:pointer;font-weight:700}
+.hl{outline:3px solid var(--seuil);outline-offset:-3px;transition:outline-color .2s}
+.expert-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
+.pform{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px 18px}
+.pf{display:flex;flex-direction:column;gap:3px}
+.pf label{font-size:13px;font-weight:700}
+.pf .in{display:flex;gap:6px;align-items:center}
+.pf input[type=number]{width:110px;border:1px solid var(--line);border-radius:3px;padding:4px 6px;background:var(--panel);font-family:var(--f-mono)}
+.pf input.mod{border-color:var(--accent);background:var(--accent-weak)}
+.pf small{color:var(--ink-3);font-size:11.5px}
+.grp{grid-column:1/-1;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.note{font-size:12.5px;color:var(--ink-3)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="brand"><h1>Mauges Communauté : <span>jusqu'où développer le solaire et l'éolien ?</span></h1></div>
+  <div class="tabs" role="tablist" aria-label="Vue">
+    <button role="tab" id="t-elu" aria-selected="true">Élu</button>
+    <button role="tab" id="t-demo" aria-selected="false">Démo</button>
+    <button role="tab" id="t-expert" aria-selected="false">Expert</button>
+  </div>
+  <div class="hdr-right">
+    <div class="year-pick">
+    <label class="label" for="annee">Année météo</label>
+    <select id="annee"></select>
+    </div>
+  </div>
+</header>
+
+<div class="grid">
+<div class="rail-tools" aria-label="Ouvrir ou replier les barres latérales">
+  <button type="button" id="side-toggle" aria-expanded="true" aria-controls="side" aria-label="Replier les réglages" title="Replier les réglages"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path id="side-chevron" d="M10 3L5 8l5 5"/></svg></button>
+  <button type="button" id="menu-toggle" aria-expanded="false" aria-controls="disp" aria-label="Afficher les éléments" title="Afficher les éléments"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path id="menu-chevron" d="M10 3L5 8l5 5"/></svg></button>
+</div>
+<aside id="side" aria-label="Réglages du simulateur">
+  <div class="side-h"><span class="label">Réglages</span></div>
+  <section class="panel" aria-label="Scénarios">
+    <span class="label">Scénarios</span>
+    <select id="presets" aria-label="Choisir un scénario"></select>
+    <p class="note" id="preset_desc"></p>
+  </section>
+  <section class="panel" aria-label="Production">
+    <span class="label">Production</span>
+    <div class="ctl"><div class="ctl-h"><b>Solaire</b><span class="ctl-v" id="v-pv"></span></div>
+      <input type="range" id="m_pv" min="0" max="4" step="0.05" aria-label="Multiplicateur du parc solaire">
+      <div class="ticks" id="tk-pv"></div></div>
+    <div class="ctl"><div class="ctl-h"><b>Éolien</b><span class="ctl-v" id="v-eol"></span></div>
+      <input type="range" id="m_eol" min="0" max="3" step="0.05" aria-label="Multiplicateur du parc éolien">
+      <div class="ticks" id="tk-eol"></div></div>
+  </section>
+  <section class="panel" aria-label="Solutions">
+    <span class="label">Solutions</span>
+    <div class="sol"><div class="sol-h"><span class="sw" style="background:var(--s-bat)"></span><b>Batterie</b>
+      <label class="switch"><input type="checkbox" id="bat_on" aria-label="Activer la batterie"><span></span></label></div>
+      <div class="sub" id="bat_sub">
+        <div class="seg" id="bat_pil"><button data-v="glouton">Stocker tout surplus</button><button data-v="pointe">Seulement les excès</button></div>
+        <div class="ctl"><div class="ctl-h"><b>Taille</b><span class="ctl-v" id="v-bat"></span></div>
+          <input type="range" id="bat_puissance" min="0.05" max="2" step="0.05" aria-label="Puissance de la batterie"></div>
+        <button class="linkbtn" id="bat_min">Taille minimale pour tenir 5 %</button>
+      </div></div>
+    <div class="sol"><div class="sol-h"><span class="sw" style="background:var(--s-ecs)"></span><b>Ballons d'eau chaude à midi</b>
+      <span class="ctl-v" id="v-ecs"></span></div>
+      <input type="range" id="ecs_deplace" min="0" max="1" step="0.05" aria-label="Part des ballons déplacés vers la journée">
+      <small class="note">Chauffe déplacée de la nuit vers 10 h-17 h, sur les surplus.</small></div>
+    <div class="sol"><div class="sol-h"><span class="sw" style="background:var(--s-ve)"></span><b>Recharge des VE pilotée</b>
+      <span class="ctl-v" id="v-ve"></span></div>
+      <input type="range" id="ve_pilote" min="0" max="0.7" step="0.01" aria-label="Part des véhicules électriques pilotés">
+      <small class="note" id="ve_note">Actif à l'horizon 2035.</small></div>
+    <div class="sol"><div class="sol-h"><span class="sw" style="background:var(--s-pv)"></span><b>Plafond d'injection solaire</b>
+      <span class="ctl-v" id="v-plaf"></span></div>
+      <input type="range" id="pv_plafond" min="0.4" max="1" step="0.05" aria-label="Plafond d'injection solaire en part de la puissance"></div>
+  </section>
+  <section class="panel" aria-label="Horizon">
+    <span class="label">Consommation</span>
+    <div class="seg" id="horizon"><button data-v="actuel">Aujourd'hui</button><button data-v="2035">2035 électrifié</button></div>
+    <small class="note" id="hz_note"></small>
+  </section>
+</aside>
+
+<div class="content">
+<main id="v-elu">
+  <section id="b-resume" aria-labelledby="h-resume"><h2 class="sec-h" id="h-resume">Résumé du scénario</h2><p class="oneline" id="oneline"></p></section>
+  <section id="b-kpis" aria-labelledby="h-kpis">
+    <div class="sec-bar"><h2 class="sec-h" id="h-kpis">Indicateurs clés</h2></div>
+    <div class="panel kpis" id="kpis"></div>
+    <div class="kpis-off" id="kpis-off" aria-label="Indicateurs masqués"></div>
+  </section>
+  <section id="b-verdict" aria-labelledby="h-verdict"><h2 class="sec-h" id="h-verdict">Verdict</h2><div class="panel verdict" id="verdict"></div></section>
+  <div class="row2">
+    <div class="panel card" id="b-jour"><div class="card-h"><div><h2>Une journée type</h2><p id="jt-sub"></p></div>
+      <div class="seg" id="saison" style="min-width:160px"><button data-v="hiver">Hiver</button><button data-v="ete">Été</button></div></div>
+      <div class="ec" id="c-jour" style="height:300px" role="img" aria-label="Journée type : production, consommation et seuil de vigilance"></div>
+      <div class="legend" id="lg-jour"></div></div>
+    <div class="panel card" id="b-carte"><div class="card-h"><div><h2>Où raccorder ?</h2><p>Postes sources et capacité S3REnR restante après le scénario</p></div>
+      <div class="maptogs">
+        <div class="maptog"><span id="postes_lbl">Postes sources</span><label class="switch"><input type="checkbox" id="postes_on" checked aria-labelledby="postes_lbl"><span></span></label>
+          <button type="button" class="map-info" aria-expanded="false" aria-controls="postes-info" aria-label="Comment est estimée la charge des postes sources ?" title="Comment est estimée la charge des postes sources ?"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></div>
+        <div class="maptog"><span id="dens_lbl">Densité ENR (MW/km²)</span><label class="switch"><input type="checkbox" id="dens_on" aria-labelledby="dens_lbl"><span></span></label>
+          <button type="button" class="map-info" aria-expanded="false" aria-controls="dens-info" aria-label="Qu'indique la densité ENR ?" title="Qu'indique la densité ENR ?"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></div>
+      </div></div>
+      <p class="map-help" id="postes-info" hidden>L'ajout estimé par poste = max(0, (multiplicateur solaire − 1) × PV déjà raccordé + (multiplicateur éolien − 1) × éolien déjà raccordé). Le taux projeté = (capacité réservée − capacité restante + ajout estimé) / capacité réservée. La carte signale les postes au-dessus de 90 % et ceux dépassant 100 %. C'est une estimation proportionnelle au parc existant, pas une étude de flux électrique ni une garantie de raccordement.</p>
+      <p class="map-help" id="dens-info" hidden>La densité correspond à la puissance solaire et éolienne du scénario dans chaque commune, divisée par sa surface communale brute, en MW/km². Elle indique la concentration des capacités, sans tenir compte des contraintes foncières.</p>
+      <div class="map" id="c-carte" role="region" aria-label="Carte des communes et des postes sources"></div>
+      <div class="legend" id="lg-carte"></div></div>
+  </div>
+  <div class="panel card" id="b-mois"><div class="card-h"><div><h2>Bilan mois par mois</h2><p id="bm-sub"></p></div></div>
+    <div class="ec" id="c-mois" style="height:280px" role="img" aria-label="Bilan mensuel"></div>
+    <div class="legend" id="lg-mois"></div></div>
+</main>
+
+<main id="v-expert" hidden>
+  <div class="panel card" id="b-heures"><div class="card-h"><div><h2>Deux semaines heure par heure</h2><p id="hx-sub"></p></div>
+    <div class="ctl" style="min-width:240px"><div class="ctl-h"><b>Début</b><span class="ctl-v" id="v-sem"></span></div>
+      <input type="range" id="semaine" min="0" max="50" step="1" value="27" aria-label="Semaine affichée"></div></div>
+    <div class="ec" id="c-heures" style="height:360px" role="img" aria-label="Production et consommation heure par heure, et état de charge de la batterie"></div>
+    <p class="note" id="c-soc" hidden>Pas de batterie dans ce scénario.</p>
+    <div class="legend" id="lg-heures"></div>
+    <p class="hint">Ctrl + molette, pincement ou barre du bas pour zoomer ; glisser pour se déplacer dans la zone zoomée.</p></div>
+  <div class="panel card" id="b-hyp"><div class="card-h"><div><h2>Toutes les hypothèses</h2><p>Formulaire généré depuis le schéma des paramètres exporté par Python (valeur, bornes, unité, source). Les valeurs modifiées sont surlignées.</p></div>
+    <button class="linkbtn" id="reset">Tout réinitialiser</button></div>
+    <div class="pform" id="pform"></div></div>
+  <div class="panel card" id="b-annees"><div class="card-h"><div><h2>Indicateurs 2021-2025</h2><p>Chaque année météo simulée séparément, sans moyenner les profils</p></div></div>
+    <div class="tbl"><table id="t-annees"></table></div></div>
+</main>
+</div>
+<aside id="disp" class="rside" aria-label="Éléments affichés">
+  <div class="side-h"><span class="label">Affichage</span></div>
+  <section class="panel dpanel"><p class="note">Cochez les éléments à afficher sur la page.</p>
+    <div id="menu-body"></div>
+    <div class="df"><button class="iconbtn" id="menu-all">Tout afficher</button><button class="iconbtn" id="menu-none">Tout masquer</button></div></section>
+</aside>
+</div>
+<div class="foot">
+  <span>Maquette fonctionnelle — moteur réel (portage JS validé sur 125 cas de référence), données 2021-2025 embarquées.</span>
+  <span>Sources : ODRÉ, Enedis, RTE Eco2Mix, Météo-France, INSEE, Caparéseau. Économie : NREL 2025, RTE, CRE (Projet 6 en sensibilité).</span>
+  <span>Fond de carte : Esri / OpenStreetMap contributeurs (sélecteur sur la carte), via Leaflet. Contours des communes : IGN/INSEE.</span>
+</div>
+<nav class="bottom-controls" aria-label="Commandes de navigation et année météo">
+  <div class="tabs" role="tablist" aria-label="Vue">
+    <button role="tab" id="tb-elu" aria-selected="true">Élu</button>
+    <button role="tab" id="tb-demo" aria-selected="false">Démo</button>
+    <button role="tab" id="tb-expert" aria-selected="false">Expert</button>
+  </div>
+  <div class="year-pick">
+    <label class="label" for="annee-bottom">Année météo</label>
+    <select id="annee-bottom"></select>
+  </div>
+</nav>
+</div>
+<div class="demo" id="demo" hidden><div><div class="n" id="demo-n"></div><h3 id="demo-h"></h3><p id="demo-p"></p></div>
+  <div class="nav"><button id="demo-prev" aria-label="Étape précédente">←</button><button id="demo-next" aria-label="Étape suivante">→</button></div></div>
+<div class="tip" id="tip" hidden></div>
+
+<script src="data.js"></script>
+<script>
+const MOTEUR = (function(){
+// moteur.mjs — Portage JavaScript de référence de donnees/scripts/moteur_ref.py (validé sur tests/golden.json).
+// Sert (1) de spécification exécutable pour le moteur TypeScript du simulateur, (2) de moteur à la maquette.
+// Conventions : pas horaire, 1 MW = 1 MWh/h ; tableaux Float64Array ; aucune allocation dans la boucle batterie.
+
+// Tolérance (MW) du comptage des heures de vigilance : en pilotage « pointe », P − ch vaut exactement s·C (audit 21/10/2026).
+const TOL_SEUIL = 1e-6;
+
+function chargerAnnee(buffer, n, colonnes, constantes) {
+  const f32 = new Float32Array(buffer);
+  const col = (nom) => Float64Array.from(f32.subarray(colonnes.indexOf(nom) * n, (colonnes.indexOf(nom) + 1) * n));
+  const a = { n, fc_pv: col("fc_pv"), fc_eol: col("fc_eol"), autres: col("autres"), c_reel: col("c_reel"), temp: col("temp"),
+              heure: Int32Array.from(col("heure")), jour: Int32Array.from(col("jour")), doy: Int32Array.from(col("doy")), const: constantes };
+  a.nJours = 0; for (let i = 0; i < n; i++) if (a.jour[i] + 1 > a.nJours) a.nJours = a.jour[i] + 1;
+  let s = 0; for (let i = 0; i < n; i++) s += a.c_reel[i]; a.sommeC = s;
+  return a;
+}
+
+const masque = (heure, [a, b]) => {
+  const m = new Uint8Array(heure.length);
+  for (let i = 0; i < heure.length; i++) { const h = heure[i]; m[i] = a < b ? (h >= a && h < b) : (h >= a || h < b); }
+  return m;
+};
+
+function repartirParJour(an, eJour, m) {
+  const nb = new Float64Array(an.nJours), out = new Float64Array(an.n);
+  for (let i = 0; i < an.n; i++) nb[an.jour[i]] += m[i];
+  for (let i = 0; i < an.n; i++) if (m[i]) out[i] = eJour[an.jour[i]] / Math.max(nb[an.jour[i]], 1);
+  return out;
+}
+
+function profilVeNonPilote(an, eJour, d, P) {
+  const arr = new Float64Array(24);
+  let [a, b] = P.VE_ARRIVEE_SOIR; for (let h = a; h < b; h++) arr[h] += P.VE_PART_SOIR / (b - a);
+  [a, b] = P.VE_ARRIVEE_JOUR; for (let h = a; h < b; h++) arr[h] += (1 - P.VE_PART_SOIR) / (b - a);
+  const nk = Math.ceil(d) + 1, noyau = new Float64Array(nk); let sk = 0;
+  for (let k = 0; k < nk; k++) { noyau[k] = Math.max(0, Math.min(1, d - k)); sk += noyau[k]; }
+  for (let k = 0; k < nk; k++) noyau[k] /= sk;
+  const prof = new Float64Array(48 + nk);
+  for (let h = 0; h < 24; h++) for (let k = 0; k < nk; k++) prof[h + k] += arr[h] * noyau[k];
+  const p24 = new Float64Array(24); let s = 0;
+  for (let h = 0; h < 24; h++) { p24[h] = prof[h] + prof[h + 24]; s += p24[h]; }
+  const out = new Float64Array(an.n);
+  for (let i = 0; i < an.n; i++) out[i] = eJour[an.jour[i]] * p24[an.heure[i]] / s;
+  return out;
+}
+
+function remplirSurplus(an, surplus, eJour, pMax, fenetre) {
+  const alloc = new Float64Array(an.n), reste = Float64Array.from(eJour), m = masque(an.heure, fenetre), idx = [];
+  for (let i = 0; i < an.n; i++) if (m[i] && surplus[i] > 0) idx.push(i);
+  idx.sort((i, j) => (an.jour[i] - an.jour[j]) || (surplus[j] - surplus[i]) || (i - j)); // = np.lexsort((-surplus, jour)), stable
+  for (const i of idx) {
+    const j = an.jour[i]; if (reste[j] <= 0) continue;
+    const x = Math.min(surplus[i], pMax, reste[j]); alloc[i] = x; reste[j] -= x;
+  }
+  return { alloc, reste };
+}
+
+function batterie(P, C, E, Pb, rdt, soc0, pilotage, seuil) {
+  const n = P.length, ch = new Float64Array(n), dch = new Float64Array(n), soc = new Float64Array(n);
+  if (E <= 0 || pilotage === "aucune") return { ch, dch, soc };
+  const eta = Math.sqrt(rdt), k = pilotage === "pointe" ? seuil : 1.0; let s = soc0 * E;
+  for (let h = 0; h < n; h++) {
+    const net = P[h] - C[h];
+    if (net > 0) { const x = Math.min(Math.max(P[h] - k * C[h], 0), Pb, (E - s) / eta); ch[h] = x; s += x * eta; }
+    else if (net < 0) { const x = Math.min(-net, Pb, s * eta); dch[h] = x; s -= x / eta; }
+    soc[h] = s;
+  }
+  return { ch, dch, soc };
+}
+
+function simuler(an, pIn, defauts, profils, avecSeries = false) {
+  const p = { ...defauts, ...pIn }, k = an.const, n = an.n, nJ = an.nJours;
+  // 1. production
+  const PcPv = p.m_pv * k.Ppv_A, P = new Float64Array(n), pv = new Float64Array(n), eol = new Float64Array(n);
+  let ecretStat = 0, Pbrut = 0;
+  for (let i = 0; i < n; i++) {
+    const brut = PcPv * an.fc_pv[i]; pv[i] = Math.min(brut, p.pv_plafond * PcPv); ecretStat += brut - pv[i];
+    eol[i] = p.m_eol * k.Peol_A * an.fc_eol[i]; P[i] = pv[i] + eol[i] + an.autres[i]; Pbrut += brut + eol[i] + an.autres[i];
+  }
+  // 2. consommation
+  const C0 = new Float64Array(n); const fv = p.variante_conso === "vol2024" ? k.conso_2024_MWh / an.sommeC : 1;
+  for (let i = 0; i < n; i++) C0[i] = an.c_reel[i] * fv;
+  let cPac = new Float64Array(n), cVeNp = new Float64Array(n), cVeTar = new Float64Array(n), eVePil = new Float64Array(nJ), nVe = 0, nPac = 0;
+  if (p.horizon === "2035") {
+    const f = k.part_residentiel * p.pop_facteur * (1 - p.renovation) + k.part_tertiaire * p.pop_facteur + (1 - k.part_residentiel - k.part_tertiaire);
+    for (let i = 0; i < n; i++) C0[i] *= f;
+    nPac = Math.min(p.pac_part * k.residences_principales_2023 * p.pop_facteur, k.logements_fossiles_2023);
+    const G = p.besoin_chauffage / k.degres_heures_16_moyen;
+    for (let i = 0; i < n; i++) cPac[i] = nPac * G * Math.max(0, p.t_base_chauffage - an.temp[i]) / p.pac_cop;
+    nVe = p.part_ve * k.voitures_menages_2023 * p.pop_facteur;
+    const eVe = nVe * p.km_jour * p.conso_ve / 100 / p.rdt_recharge / 1000, partTar = Math.max(0, 1 - p.ve_non_pilote - p.ve_pilote);
+    const dCharge = (p.km_jour * p.conso_ve / 100 / p.rdt_recharge) / p.p_borne;
+    cVeNp = profilVeNonPilote(an, new Float64Array(nJ).fill(eVe * p.ve_non_pilote), dCharge, profils);
+    cVeTar = repartirParJour(an, new Float64Array(nJ).fill(eVe * partTar), masque(an.heure, profils.HC_NUIT));
+    eVePil.fill(eVe * p.ve_pilote);
+  }
+  const C1 = new Float64Array(n); for (let i = 0; i < n; i++) C1[i] = C0[i] + cPac[i] + cVeNp[i] + cVeTar[i];
+  // 3. flexibilités
+  let cVePil = new Float64Array(n), sPil = 0; for (let j = 0; j < nJ; j++) sPil += eVePil[j];
+  if (sPil > 0) {
+    const nPil = nVe * p.ve_pilote, jourE = eVePil.map((e) => e * p.ve_dispo_journee), surplus = new Float64Array(n);
+    for (let i = 0; i < n; i++) surplus[i] = P[i] - C1[i];
+    const { alloc, reste } = remplirSurplus(an, surplus, jourE, nPil * p.p_borne / 1000, profils.FENETRE_JOUR);
+    const nuitE = new Float64Array(nJ); for (let j = 0; j < nJ; j++) nuitE[j] = eVePil[j] * (1 - p.ve_dispo_journee) + reste[j];
+    const nuit = repartirParJour(an, nuitE, masque(an.heure, profils.HC_NUIT));
+    for (let i = 0; i < n; i++) cVePil[i] = alloc[i] + nuit[i];
+  }
+  const C2 = new Float64Array(n); for (let i = 0; i < n; i++) C2[i] = C1[i] + cVePil[i];
+  let ecsR = new Float64Array(n), ecsA = new Float64Array(n);
+  if (p.ecs_deplace > 0) {
+    const nEcs = p.ecs_part * k.residences_principales_2023 * (p.horizon === "2035" ? p.pop_facteur : 1) * p.ecs_deplace;
+    const sd = new Float64Array(nJ), cnt = new Float64Array(nJ);
+    for (let i = 0; i < n; i++) { sd[an.jour[i]] += an.doy[i]; cnt[an.jour[i]] += 1; }
+    const eJ = new Float64Array(nJ);
+    for (let j = 0; j < nJ; j++) eJ[j] = nEcs * p.ecs_conso / 365 * (1 + profils.ECS_SAISON * Math.cos(2 * Math.PI * (sd[j] / Math.max(cnt[j], 1) - 15) / 365));
+    ecsR = repartirParJour(an, eJ, masque(an.heure, profils.ECS_NUIT));
+    const surplus = new Float64Array(n); for (let i = 0; i < n; i++) surplus[i] = P[i] - C2[i];
+    const { alloc, reste } = remplirSurplus(an, surplus, eJ, nEcs * p.ecs_p / 1000, profils.ECS_JOUR);
+    const rep = repartirParJour(an, reste, masque(an.heure, profils.ECS_NUIT));
+    for (let i = 0; i < n; i++) ecsA[i] = alloc[i] + rep[i];
+  }
+  const C = new Float64Array(n); for (let i = 0; i < n; i++) C[i] = C2[i] - ecsR[i] + ecsA[i];
+  // 4. batterie
+  const E = p.bat_pilotage !== "aucune" ? p.bat_puissance * PcPv * p.bat_duree : 0, Pb = p.bat_puissance * PcPv;
+  const { ch, dch, soc } = batterie(P, C, E, Pb, p.bat_rdt, p.bat_soc0, p.bat_pilotage, p.seuil_vigilance);
+  // 5. indicateurs
+  let sP = 0, sC = 0, auto = 0, exp = 0, imp = 0, injMax = -Infinity, cMax = -Infinity, soutMax = -Infinity, hv = 0, ecretDyn = 0, sDch = 0, veAbs = 0, sPac = 0, sVe = 0, sEcs = 0;
+  const inj = avecSeries ? new Float64Array(n) : null;
+  for (let i = 0; i < n; i++) {
+    const d = Math.min(P[i], C[i]); sP += P[i]; sC += C[i]; auto += d + dch[i];
+    exp += Math.max(P[i] - C[i], 0) - ch[i]; imp += Math.max(C[i] - P[i], 0) - dch[i];
+    const x = P[i] - C[i] - ch[i] + dch[i]; if (inj) inj[i] = x;
+    if (x > injMax) injMax = x; if (-x > soutMax) soutMax = -x; if (C[i] > cMax) cMax = C[i];
+    if (P[i] - ch[i] > p.seuil_vigilance * C[i] + TOL_SEUIL) hv++;
+    ecretDyn += Math.max(x - (p.seuil_vigilance - 1) * C[i], 0); sDch += dch[i];
+    veAbs += Math.min(cVePil[i], Math.max(P[i] - C1[i], 0)); sPac += cPac[i]; sVe += cVeNp[i] + cVeTar[i] + cVePil[i]; sEcs += ecsR[i];
+  }
+  const ecret = ecretStat + ecretDyn;
+  const fa = p.taux_actu > 0 ? (1 - Math.pow(1 + p.taux_actu, -p.duree_analyse)) / p.taux_actu : p.duree_analyse;
+  const r = {
+    production_MWh: sP, production_brute_MWh: Pbrut, consommation_MWh: sC, couverture: sP / sC, couverture_horaire: auto / sC,
+    autoconso_MWh: auto, surplus_exporte_MWh: exp, deficit_importe_MWh: imp, pointe_injection_MW: injMax, pointe_conso_MW: cMax,
+    pointe_soutirage_MW: soutMax, heures_vigilance: hv, ecretement_statique_MWh: ecretStat, ecretement_dynamique_MWh: ecretDyn,
+    ecretement_MWh: ecret, ecretement_part: ecret / Pbrut, conforme: ecret / Pbrut <= p.ecretement_max + 1e-12,
+    bat_energie_MWh: E, bat_decharge_MWh: sDch, bat_cycles: E ? sDch / E : 0, ve_nb: nVe, pac_nb: nPac, conso_pac_MWh: sPac,
+    conso_ve_MWh: sVe, ve_surplus_absorbe_MWh: veAbs, ecs_deplace_MWh: sEcs,
+    valeur_annuelle_EUR: 1000 * (-imp * p.prix_achat + (exp - ecretDyn) * p.prix_surplus), capex_batterie_EUR: E * 1000 * p.cout_bat, om_annuel_EUR: E > 0 ? Pb * 1000 * p.om_bat : 0, facteur_annuite: fa,
+  };
+  if (avecSeries) r.series = { P, C, C0, pac: cPac, ve_np: cVeNp, ve_tar: cVeTar, ve_pil: cVePil, ecs_retire: ecsR, ecs_ajoute: ecsA, ch, dch, soc, inj, pv, eol };
+  return r;
+}
+
+return { chargerAnnee, simuler, batterie };
+})();
+</script>
+<script>
+(function(){
+const $ = (s) => document.getElementById(s);
+const fr = (x, d = 1) => (x == null || !isFinite(x)) ? "–" : x.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d });
+const DEF = Object.fromEntries(Object.entries(META.parametres).map(([k, v]) => [k, v.defaut]));
+const K = META.constantes;
+// ---- données : base64 → ArrayBuffer → Annee
+const ANS = {};
+for (const a of META.annees) {
+  const s = atob(BIN[a]); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+  ANS[a] = MOTEUR.chargerAnnee(u.buffer, META.n_heures[a], META.colonnes, K);
+  const A = ANS[a]; A.mois = new Int8Array(A.n); A.ouvre = new Uint8Array(A.n);
+  for (let i = 0; i < A.n; i++) { const d = new Date(Date.UTC(+a, 0, 1 + A.jour[i])); A.mois[i] = d.getUTCMonth(); const w = d.getUTCDay(); A.ouvre[i] = (w !== 0 && w !== 6) ? 1 : 0; }
+}
+// ---- état
+let P = { ...DEF, annee: META.annee_typique }, vue = "elu", saison = "hiver", presetActif = "A", demoStep = 0;
+const PRESETS = META.presets;
+const sim = (p, a, series) => MOTEUR.simuler(ANS[a], { ...p, annee: a }, DEF, META.profils, series);
+// ---- contrôles
+const anneeSelects = [$("annee"), $("annee-bottom")];
+for (const select of anneeSelects) {
+  for (const a of META.annees) select.add(new Option(a + (a === META.annee_typique ? " (typique)" : ""), a));
+  select.value = META.annee_typique;
+  select.onchange = () => { P.annee = +select.value; for (const other of anneeSelects) other.value = P.annee; render(); };
+}
+const chips = $("presets");
+const PRESET_IDS = ["A", "B", "C", "B_batterie", "C_batterie", "reco_sobre", "reco_batterie", "2035_reference"];
+const PRESET_COURT = { A: "A · parc actuel", B: "B · solaire ×2", C: "C · solaire ×3, éolien ×1,5", B_batterie: "B + batterie", C_batterie: "C + batterie", reco_sobre: "Recommandé (sans stockage)", reco_batterie: "Recommandé + batterie", "2035_reference": "2035 électrifié" };
+for (const id of PRESET_IDS) if (PRESETS[id]) { const o = document.createElement("option"); o.value = id; o.textContent = PRESET_COURT[id]; chips.append(o); }
+{ const o = document.createElement("option"); o.value = ""; o.textContent = "Personnalisé (réglages modifiés)"; o.disabled = true; chips.append(o); }
+chips.onchange = () => { if (chips.value) appliquerPreset(chips.value); };
+function appliquerPreset(id) { P = { ...DEF, annee: P.annee, ...PRESETS[id].p }; presetActif = id; syncControls(); render(); }
+function ticks(el, max, marks) { el.innerHTML = marks.map(([v, t]) => `<span style="left:calc(${v / max * 100}% + ${8 - 16 * v / max}px)">${t}</span>`).join(""); }
+ticks($("tk-pv"), 4, [[1, "A"], [2, "B"], [3, "C"]]); ticks($("tk-eol"), 3, [[1, "A·B"], [1.5, "C"]]);
+const num = (id, key) => { const el = $(id); el.oninput = () => { P[key] = +el.value; presetActif = null; syncControls(); render(); }; };
+num("m_pv", "m_pv"); num("m_eol", "m_eol"); num("bat_puissance", "bat_puissance"); num("ecs_deplace", "ecs_deplace"); num("pv_plafond", "pv_plafond");
+$("ve_pilote").oninput = () => { P.ve_pilote = +$("ve_pilote").value; P.ve_non_pilote = Math.min(0.30, 1 - P.ve_pilote); presetActif = null; syncControls(); render(); };
+$("bat_on").onchange = () => { P.bat_pilotage = $("bat_on").checked ? (P._pil || "pointe") : "aucune"; presetActif = null; syncControls(); render(); };
+for (const b of $("bat_pil").children) b.onclick = () => { P._pil = b.dataset.v; if (P.bat_pilotage !== "aucune") P.bat_pilotage = b.dataset.v; presetActif = null; syncControls(); render(); };
+for (const b of $("horizon").children) b.onclick = () => { P.horizon = b.dataset.v; presetActif = null; syncControls(); render(); };
+for (const b of $("saison").children) b.onclick = () => { saison = b.dataset.v; syncControls(); renderJour(lastSeries); };
+$("bat_min").onclick = () => {
+  const base = { ...P, bat_pilotage: P.bat_pilotage === "aucune" ? "pointe" : P.bat_pilotage };
+  let trouve = null;
+  for (let f = 0.05; f <= 2.0001; f += 0.05) { const ok = META.annees.every(a => sim({ ...base, bat_puissance: +f.toFixed(2) }, a).conforme); if (ok) { trouve = +f.toFixed(2); break; } }
+  if (trouve === null) { $("bat_min").textContent = "Impossible même à 2 × Ppv"; setTimeout(() => $("bat_min").textContent = "Taille minimale pour tenir 5 %", 2500); return; }
+  P = { ...base, bat_puissance: trouve }; presetActif = null; syncControls(); render();
+};
+function syncControls() {
+  $("m_pv").value = P.m_pv; $("m_eol").value = P.m_eol; $("bat_puissance").value = P.bat_puissance; $("ecs_deplace").value = P.ecs_deplace;
+  $("pv_plafond").value = P.pv_plafond; $("ve_pilote").value = P.ve_pilote;
+  $("v-pv").textContent = `${fr(P.m_pv * K.Ppv_A, 0)} MW · ${P.m_pv >= 1 ? "+" : ""}${fr((P.m_pv - 1) * 100, 0)} %`;
+  $("v-eol").textContent = `${fr(P.m_eol * K.Peol_A, 0)} MW · ${P.m_eol >= 1 ? "+" : ""}${fr((P.m_eol - 1) * 100, 0)} %`;
+  const E = P.bat_puissance * P.m_pv * K.Ppv_A * P.bat_duree;
+  $("v-bat").textContent = `${fr(E, 0)} MWh · ${fr(P.bat_puissance * P.m_pv * K.Ppv_A, 0)} MW`;
+  $("v-ecs").textContent = `${fr(P.ecs_deplace * 100, 0)} %`; $("v-ve").textContent = `${fr(P.ve_pilote * 100, 0)} %`;
+  $("v-plaf").textContent = P.pv_plafond >= 1 ? "aucun" : `${fr(P.pv_plafond * 100, 0)} % de Pc`;
+  $("bat_on").checked = P.bat_pilotage !== "aucune"; $("bat_sub").hidden = P.bat_pilotage === "aucune";
+  const pil = P.bat_pilotage === "aucune" ? (P._pil || "pointe") : P.bat_pilotage;
+  for (const b of $("bat_pil").children) b.setAttribute("aria-pressed", b.dataset.v === pil);
+  for (const b of $("horizon").children) b.setAttribute("aria-pressed", b.dataset.v === P.horizon);
+  for (const b of $("saison").children) b.setAttribute("aria-pressed", b.dataset.v === saison);
+  chips.value = presetActif || ""; $("preset_desc").textContent = presetActif ? PRESETS[presetActif].libelle : "Réglages modifiés à la main : aucun scénario prédéfini ne correspond.";
+  $("ve_pilote").disabled = P.horizon !== "2035";
+  $("ve_note").textContent = P.horizon === "2035" ? "Recharge placée sur les surplus solaires (sinon heures creuses)." : "Disponible à l'horizon 2035 (VE en nombre).";
+  for (const select of anneeSelects) select.value = P.annee;
+}
+// ---- calcul
+let lastSeries = null, lastR = null, lastAll = null;
+function render() {
+  const all = META.annees.map(a => sim(P, a, a === P.annee));
+  const r = all[META.annees.indexOf(P.annee)];
+  lastR = r; lastAll = all; lastSeries = r.series;
+  renderOneline(r); renderKpis(r, all); renderVerdict(r, all); renderJour(r.series); renderCarte(); renderMois(r.series);
+  if (vue === "expert") { syncForm(); renderExpert(); }
+  applyVis();
+  $("hz_note").textContent = P.horizon === "2035" ? `${fr(r.ve_nb, 0)} VE · ${fr(r.pac_nb, 0)} logements en PAC · ${fr(r.consommation_MWh / 1000, 0)} GWh/an` : `Consommation mesurée de l'année (${fr(r.consommation_MWh / 1000, 0)} GWh).`;
+}
+const rng = (all, k, f = 100, d = 1) => { const v = all.map(r => r[k] * f); return `${fr(Math.min(...v), d)}–${fr(Math.max(...v), d)}`; };
+function renderOneline(r) {
+  const sols = [];
+  const variation = f => { const pct = (f - 1) * 100; return `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${fr(Math.abs(pct), 0)} %`; };
+  if (P.bat_pilotage !== "aucune") sols.push(`batterie ${fr(r.bat_energie_MWh, 0)} MWh (${P.bat_pilotage === "pointe" ? "stocke les excès" : "stocke tout surplus"})`);
+  if (P.ecs_deplace > 0) sols.push(`${fr(P.ecs_deplace * 100, 0)} % des ballons à midi`);
+  if (P.horizon === "2035" && P.ve_pilote > 0) sols.push(`${fr(P.ve_pilote * 100, 0)} % des VE pilotés`);
+  if (P.pv_plafond < 1) sols.push(`injection solaire plafonnée à ${fr(P.pv_plafond * 100, 0)} %`);
+  $("oneline").innerHTML = `<b>Solaire ${fr(P.m_pv * K.Ppv_A, 0)} MW (${variation(P.m_pv)} vs parc actuel)</b>, <b>éolien ${fr(P.m_eol * K.Peol_A, 0)} MW (${variation(P.m_eol)} vs parc actuel)</b>, ${sols.length ? sols.join(", ") : "sans solution de flexibilité"} — ${P.horizon === "2035" ? "consommation 2035 électrifiée" : "consommation actuelle"}, météo ${P.annee}.`;
+}
+function renderKpis(r, all) {
+  const ecr = r.ecretement_part * 100, okAll = all.every(x => x.conforme), annKo = META.annees.filter((a, i) => !all[i].conforme);
+  const st = r.conforme ? (okAll ? ["ok", "✓ Conforme chaque année"] : ["warn", `! Dépassé en ${annKo.join(", ")}`]) : ["ko", "✕ Au-delà de 5 %"];
+  const gx = (v) => 8 + Math.min(v, 25) / 25 * 184;
+  const ev = all.map(x => x.ecretement_part * 100);
+  const gauge = `<svg class="gauge" viewBox="0 0 200 26" aria-hidden="true">
+    <rect x="8" y="9" width="184" height="6" fill="var(--line-2)"/>
+    <rect x="${gx(Math.min(...ev))}" y="9" width="${Math.max(1, gx(Math.max(...ev)) - gx(Math.min(...ev)))}" height="6" fill="var(--ink-3)" opacity=".35"/>
+    ${[0, 5, 10, 15, 20, 25].map(t => `<line x1="${gx(t)}" x2="${gx(t)}" y1="16" y2="19" stroke="var(--ink-3)"/><text x="${gx(t)}" y="26" text-anchor="middle" style="font-size:7.5px">${t}</text>`).join("")}
+    <line x1="${gx(5)}" x2="${gx(5)}" y1="3" y2="19" stroke="var(--seuil)" stroke-width="1.5" stroke-dasharray="3 2"/>
+    <rect x="${gx(ecr) - 2}" y="5" width="4" height="14" fill="var(--ink)"/></svg>`;
+  const capex = r.capex_batterie_EUR;
+  let cout = `<div class="v">0<span class="u">M€</span></div><div class="r">Aucune batterie dans ce scénario.</div>`;
+  if (capex > 0) {
+    const sans = META.annees.map(a => sim({ ...P, bat_pilotage: "aucune" }, a));
+    const gain = all.reduce((s, x, i) => s + x.valeur_annuelle_EUR - sans[i].valeur_annuelle_EUR, 0) / all.length;
+    const om = r.om_annuel_EUR, van = (gain - om) * r.facteur_annuite - capex;
+    cout = `<div class="v">${fr(capex / 1e6, 0)}<span class="u">M€</span></div><div class="r">Entretien ${fr(om / 1e6, 1)} M€/an, gain estimé ${fr(gain / 1e6, 1)} M€/an et VAN ${fr(van / 1e6, 0)} M€ sur ${P.duree_analyse} ans.</div>`;
+  }
+  const gwh = v => fr(v / 1000, v / 1000 < 10 ? 1 : 0);
+  const sg = v => (v < 0 ? "−" : "+") + gwh(Math.abs(v));
+  $("kpis-off").innerHTML = "";
+  $("kpis").innerHTML = `
+   <div class="kpi" id="k-prod">${kHead("k-prod", "Énergie produite")}<div class="v">${gwh(r.production_MWh)}<span class="u">GWh/an</span></div>
+     <div class="r">Soit <b>${fr(r.couverture * 100, 0)} %</b> de la consommation annuelle.</div></div>
+   <div class="kpi" id="k-auto">${kHead("k-auto", "Taux de couverture")}<div class="v">${fr(r.couverture_horaire * 100)}<span class="u">%</span></div>
+     <div class="r">Part de la consommation couverte heure par heure ; météo 2021-2025 : <b>${rng(all, "couverture_horaire")} %</b>.</div></div>
+   <div class="kpi" id="k-solde">${kHead("k-solde", "Surplus / déficit")}<div class="v">${sg(r.surplus_exporte_MWh - r.deficit_importe_MWh)}<span class="u">GWh/an</span></div>
+     <div class="r"><b>${gwh(r.surplus_exporte_MWh)}</b> envoyés au réseau et <b>${gwh(r.deficit_importe_MWh)}</b> achetés.</div></div>
+   <div class="kpi" id="k-ecr">${kHead("k-ecr", "Énergie perdue (écrêtement)")}<div class="v">${fr(ecr)}<span class="u">%</span></div>
+     <span class="pill ${st[0]}">${st[1]}</span>${gauge}</div>
+   <div class="kpi" id="k-vig">${kHead("k-vig", "Heures de vigilance réseau")}<div class="v">${fr(r.heures_vigilance, 0)}<span class="u">h/an</span></div>
+     <div class="r">Heures au-dessus de 120 % de la consommation ; météo 2021-2025 : <b>${rng(all, "heures_vigilance", 1, 0)} h</b>.</div></div>
+   <div class="kpi" id="k-pointes">${kHead("k-pointes", "Pointes d'injection")}<div class="v">${fr(r.pointe_injection_MW, 0)}<span class="u">MW ↑</span></div>
+     <div class="r">Soutirage maximal au réseau : <b>${fr(r.pointe_soutirage_MW, 0)} MW</b>.</div></div>
+   <div class="kpi" id="k-cout">${kHead("k-cout", "Investissement batterie")}${cout}</div>`;
+}
+const INFO = {
+  "k-auto": "<b>Part de la consommation couverte, heure par heure,</b> par la production locale solaire et éolienne (batterie comprise). 100 % signifierait que chaque heure de l'année est couverte localement. Un taux bas malgré une forte production annuelle indique un décalage entre les heures de production et celles de consommation. La plage 2021-2025 montre l'effet de la météo.",
+  "k-prod": "<b>Production annuelle de solaire et d'éolien</b> du scénario, en GWh. Le pourcentage compare cette énergie à la consommation annuelle : 100 % = autant produit que consommé sur l'année, mais pas aux mêmes heures (voir le taux de couverture).",
+  "k-solde": "<b>Bilan annuel avec le réseau : surplus (+) moins déficit (−).</b> Le surplus est l'énergie produite en excès et envoyée au réseau (écrêtement compris) ; le déficit est l'énergie achetée au réseau quand la production ne suffit pas. Un signe + indique plus d'envois que d'achats sur l'année ; les deux montants sont détaillés en dessous.",
+  "k-ecr": "<b>Part de la production brute perdue par écrêtement</b> : plafonnement des onduleurs et dépassement du seuil de vigilance (120 % de la consommation). La limite de 5 % par année météo sert de repère : au-delà, le scénario n'est plus conforme. Leviers : plus d'éolien, ballons d'eau chaude, batterie.",
+  "k-vig": "<b>Nombre d'heures par an où la production dépasse 120 % de la consommation locale.</b> Plus il est élevé, plus le réseau est sollicité en injection et plus le risque d'écrêtement augmente.",
+  "k-pointes": "<b>Puissance maximale injectée sur le réseau (↑)</b> sur l'année, avec l'appel maximal depuis le réseau (↓) quand la production ne suffit pas. Ces pointes dimensionnent les ouvrages de raccordement : à comparer à la capacité restante des postes sources sur la carte.",
+  "k-cout": "<b>Coût d'investissement de la batterie</b>, son entretien annuel et le gain annuel qu'elle apporte. La VAN indique si ce gain compense les coûts sur la durée d'analyse : négative, la batterie ne se rembourse pas."
+};
+const EYE_PATH = '<path d="M1 8s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/>';
+const kHead = (id, label) => `<div class="k-head"><span class="label">${label}</span><span class="k-tools">
+  <button type="button" class="k-btn k-eye" data-name="${label}" aria-label="Masquer « ${label} »" title="Masquer / afficher cet indicateur"><svg class="e-open" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}</svg><svg class="e-closed" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}<path d="M2.5 14L13.5 2"/></svg></button>
+  <button type="button" class="k-btn k-info" aria-expanded="false" aria-label="À propos de « ${label} »" title="Comment lire cet indicateur"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></span></div>
+  <div class="k-pop" role="note" hidden>${INFO[id]}</div>`;
+function ajoutsPostes() {
+  const dp = P.m_pv - 1, de = P.m_eol - 1;
+  return GEO.postes.map(p => { const aj = Math.max(0, dp * p.pv_MW + de * p.eol_MW); const occ = p.capacite_reservee_MW - p.restant_MW; return { ...p, ajout: aj, remplissage: (occ + aj) / p.capacite_reservee_MW, depasse: Math.max(0, aj - p.restant_MW) }; });
+}
+const liste = (a) => a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " et " + a[a.length - 1];
+function renderVerdict(r, all) {
+  const okAll = all.every(x => x.conforme), aj = ajoutsPostes();
+  const ajout = Math.max(0, (P.m_pv - 1) * K.Ppv_A) + Math.max(0, (P.m_eol - 1) * K.Peol_A);
+  const restLoc = GEO.postes.reduce((s, p) => s + p.restant_MW, 0);
+  const sat = aj.filter(p => p.depasse > 0.5).map(p => p.nom);
+  const libres = aj.filter(p => p.restant_MW - p.ajout > 10).map(p => p.nom);
+  let cls = okAll ? "ok" : (r.conforme ? "warn" : "ko"), ic = okAll ? "✓" : (r.conforme ? "!" : "✕"), t = [];
+  t.push(okAll ? "L'écrêtement reste sous la limite de 5 % pour les cinq années météo." : `L'écrêtement dépasse la limite de 5 % ${r.conforme ? "certaines années" : "cette année"} (jusqu'à ${fr(Math.max(...all.map(x => x.ecretement_part * 100)))} %).`);
+  if (!okAll) t.push(P.bat_pilotage === "aucune" ? "Leviers : davantage d'éolien plutôt que de solaire, ballons d'eau chaude à midi, ou une batterie." : "Agrandir la batterie ou réduire le solaire.");
+  if (ajout > 0.5) t.push(sat.length ? `${fr(ajout, 0)} MW à raccorder : ${liste(sat)} ${sat.length > 1 ? "seraient saturés" : "serait saturé"} si l'on étendait le parc existant à l'identique ; orienter les projets vers ${liste(libres)} (${fr(restLoc, 0)} MW encore disponibles sur les postes du territoire).` : `${fr(ajout, 0)} MW à raccorder, compatibles avec les capacités restantes des postes.`);
+  $("verdict").className = "panel verdict " + cls;
+  $("verdict").innerHTML = `<span class="ic" aria-hidden="true">${ic}</span><p>${t.join(" ")}</p>`;
+}
+// ---- graphiques (Apache ECharts)
+const CH = {}, SEL = {};
+const hexA = (h, a) => { h = (h || "").trim(); const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(h); if (!m) return h; let x = m[1]; if (x.length === 3) x = x.split("").map(c => c + c).join(""); return `rgba(${parseInt(x.slice(0, 2), 16)},${parseInt(x.slice(2, 4), 16)},${parseInt(x.slice(4, 6), 16)},${a})`; };
+const r1 = v => Math.round(v * 10) / 10;
+function cols() { const st = getComputedStyle(document.documentElement), v = n => st.getPropertyValue(n).trim();
+  return { ink: v("--ink"), ink2: v("--ink-2"), ink3: v("--ink-3"), line: v("--line"), line2: v("--line-2"), panel: v("--panel"), seuil: v("--seuil"), bocage: v("--bocage"), accent: v("--accent"),
+    eol: v("--s-eol"), pv: v("--s-pv"), bat: v("--s-bat"), ecs: v("--s-ecs"), font: v("--f-body") }; }
+function ecBase(c) { return { animationDuration: 300, animationDurationUpdate: 300, useUTC: true, textStyle: { fontFamily: c.font, color: c.ink2 },
+  tooltip: { trigger: "axis", confine: true, backgroundColor: c.ink, borderWidth: 0, padding: [7, 9], textStyle: { color: c.panel, fontSize: 12.5, fontFamily: c.font },
+    extraCssText: "border-radius:3px;line-height:1.4;font-variant-numeric:tabular-nums;white-space:normal", axisPointer: { type: "line", lineStyle: { color: c.ink3, type: "dashed" } } } }; }
+const axTxt = c => ({ color: c.ink2, fontSize: 11.5, fontFamily: c.font });
+// Dessine (ou met à jour) un graphique ; si le conteneur est masqué (autre vue), on attend qu'il devienne visible.
+function drawChart(id, option, height) {
+  const el = $(id);
+  if (typeof echarts === "undefined") { el.innerHTML = '<p class="note" style="padding:12px">Bibliothèque de graphiques (ECharts) non chargée : vérifier la connexion Internet.</p>'; return; }
+  if (height) el.style.height = height + "px";
+  let c = CH[id];
+  if (!c) { c = CH[id] = { chart: null, opt: null, dirty: false };
+    new ResizeObserver(() => { if (!el.offsetWidth) return; if (!c.chart) c.chart = echarts.init(el, null, { renderer: "canvas" });
+      if (c.dirty && c.opt) { c.chart.setOption(c.opt, { notMerge: true }); c.dirty = false; } c.chart.resize(); }).observe(el); }
+  for (const se of option.series) if (se.data && !Array.isArray(se.data)) se.data = Array.from(se.data); // ECharts lit un tableau typé comme des paires x,y entrelacées
+  c.opt = option;
+  if (!el.offsetWidth) { c.dirty = true; return; }
+  if (!c.chart) c.chart = echarts.init(el, null, { renderer: "canvas" });
+  c.chart.setOption(option, { notMerge: true }); c.dirty = false; c.chart.resize();
+}
+// Légende HTML cliquable (masque / affiche une série)
+function setLegend(chartId, legId, items) {
+  const box = $(legId), sel = SEL[chartId] || (SEL[chartId] = {});
+  box.innerHTML = items.map(([n, st, cls]) => `<button type="button" data-n="${n}" aria-pressed="${sel[n] !== false}" class="${sel[n] === false ? "off" : ""}"><i ${cls ? `class="${cls}" ` : ""}style="${st}"></i>${n}</button>`).join("");
+  box.onclick = e => { const b = e.target.closest("button"); if (!b) return; const n = b.dataset.n, hide = sel[n] !== false; sel[n] = hide ? false : true;
+    b.classList.toggle("off", hide); b.setAttribute("aria-pressed", !hide);
+    const c = CH[chartId]; if (c && c.chart) c.chart.dispatchAction({ type: hide ? "legendUnSelect" : "legendSelect", name: n }); };
+}
+const legSel = (id, names) => ({ show: false, data: names, selected: Object.fromEntries(names.map(n => [n, (SEL[id] || {})[n] !== false])) });
+function themeRerender() { if (typeof lastR !== "undefined" && lastR) render(); }
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", themeRerender);
+new MutationObserver(themeRerender).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+function journeeType(s) {
+  const A = ANS[P.annee], m = saison === "hiver" ? 0 : 6;
+  const acc = {}; const keys = ["pv", "eol", "C", "C0", "ch", "dch", "ecs_ajoute", "ecs_retire", "ve_pil", "pac", "ve_np", "ve_tar"]; for (const k of keys) acc[k] = new Float64Array(24);
+  const cnt = new Float64Array(24);
+  for (let i = 0; i < A.n; i++) if (A.mois[i] === m && A.ouvre[i]) { const h = A.heure[i]; cnt[h]++; for (const k of keys) acc[k][h] += s[k][i]; acc.eol[h] += A.autres[i]; }
+  for (const k of keys) for (let h = 0; h < 24; h++) acc[k][h] /= Math.max(cnt[h], 1);
+  return acc;
+}
+function renderJour(s) {
+  if (!s) return;
+  const j = journeeType(s), c = cols(), HH = Array.from({ length: 24 }, (_, h) => h);
+  const seuil = j.C.map(v => v * 1.2), flex = j.ecs_ajoute.map((v, h) => Math.max(0, v - j.ecs_retire[h]) + (h >= 9 && h < 17 ? j.ve_pil[h] : 0));
+  const cMinusFlex = j.C.map((v, h) => v - flex[h]), hasFlex = flex.some(v => v > 0.2);
+  const bat = P.bat_pilotage !== "aucune" || j.ch.some(v => v > 0.05) || j.dch.some(v => v > 0.05);
+  const N = { eol: "éolien (+ bio, hydro)", pv: "solaire", conso: "consommation", seuil: "seuil 120 %", ch: "charge batterie (plein)", dch: "décharge batterie (contour)", flex: "consommation déplacée vers la journée" };
+  const names = [N.eol, N.pv, N.conso, N.seuil, ...(bat ? [N.ch, N.dch] : []), ...(hasFlex ? [N.flex] : [])];
+  const area = (name, data, color, extra = {}) => ({ name, type: "line", stack: "prod", symbol: "none", data: Array.from(data, r1), lineStyle: { width: 0 }, areaStyle: { color }, emphasis: { disabled: true }, ...extra });
+  const series = [
+    area(N.eol, j.eol, hexA(c.eol, .85)),
+    area(N.pv, j.pv, hexA(c.pv, .85)),
+    ...(hasFlex ? [
+      { name: "_base", type: "line", stack: "flex", symbol: "none", data: Array.from(cMinusFlex, r1), lineStyle: { width: 0 }, silent: true, tooltip: { show: false } },
+      { name: N.flex, type: "line", stack: "flex", symbol: "none", data: Array.from(flex, r1), lineStyle: { width: 0 }, areaStyle: { color: hexA(c.ecs, .55) }, emphasis: { disabled: true } }] : []),
+    ...(bat ? [
+      { name: N.ch, type: "bar", data: Array.from(j.ch, v => -r1(v)), barWidth: "55%", barGap: "-100%", itemStyle: { color: c.bat, borderRadius: 1 }, emphasis: { disabled: true } },
+      { name: N.dch, type: "bar", data: Array.from(j.dch, v => -r1(v)), barWidth: "55%", barGap: "-100%", itemStyle: { color: "transparent", borderColor: c.bat, borderWidth: 1.5, borderRadius: 1 }, emphasis: { disabled: true } }] : []),
+    { name: N.seuil, type: "line", symbol: "none", data: Array.from(seuil, r1), lineStyle: { color: c.seuil, width: 1.5, type: "dashed" }, itemStyle: { color: c.seuil },
+      endLabel: { show: true, formatter: "seuil 120 %", color: c.seuil, fontSize: 11.5, fontFamily: c.font }, markLine: { silent: true, symbol: "none", label: { show: false }, lineStyle: { color: c.ink3, width: 1, type: "solid" }, data: [{ yAxis: 0 }] }, emphasis: { disabled: true } },
+    { name: N.conso, type: "line", symbol: "none", data: Array.from(j.C, r1), lineStyle: { color: c.ink, width: 2.2 }, itemStyle: { color: c.ink },
+      endLabel: { show: true, formatter: "consommation", color: c.ink, fontSize: 11.5, fontFamily: c.font }, emphasis: { disabled: true } }
+  ];
+  const opt = { ...ecBase(c), legend: legSel("c-jour", names), grid: { left: 46, right: 98, top: 26, bottom: 28 },
+    xAxis: { type: "category", data: HH.map(h => h + " h"), boundaryGap: bat, axisTick: { show: false }, axisLine: { onZero: false, lineStyle: { color: c.ink3 } },
+      axisLabel: { ...axTxt(c), interval: i => [0, 6, 12, 18, 23].includes(i) } },
+    yAxis: { type: "value", name: "MW", nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: axTxt(c), splitLine: { lineStyle: { color: c.line2 } } },
+    series };
+  opt.tooltip.formatter = ps => { const h = ps[0].dataIndex;
+    return `<b>${h} h</b><br>solaire ${fr(j.pv[h], 0)} MW · éolien ${fr(j.eol[h], 0)} MW<br>consommation ${fr(j.C[h], 0)} MW${j.ch[h] > .05 ? `<br>charge batterie ${fr(j.ch[h], 0)} MW` : ""}${j.dch[h] > .05 ? `<br>décharge ${fr(j.dch[h], 0)} MW` : ""}${hasFlex && flex[h] > .2 ? `<br>consommation déplacée ${fr(flex[h], 0)} MW` : ""}`; };
+  $("jt-sub").textContent = `Jour ouvré moyen de ${saison === "hiver" ? "janvier" : "juillet"} ${P.annee}, heure locale`;
+  setLegend("c-jour", "lg-jour", [[N.eol, "background:var(--s-eol)", "a"], [N.pv, "background:var(--s-pv)", "a"], [N.conso, "background:var(--ink)"], [N.seuil, "background:var(--seuil)"],
+    ...(bat ? [[N.ch, "background:var(--s-bat)", "a"], [N.dch, "background:transparent;box-shadow:inset 0 0 0 1.5px var(--s-bat)", "a"]] : []), ...(hasFlex ? [[N.flex, "background:var(--s-ecs);opacity:.55", "a"]] : [])]);
+  drawChart("c-jour", opt);
+}
+function renderMois(s) {
+  if (!s) return;
+  const A = ANS[P.annee], c = cols();
+  const loc = new Float64Array(12), exp = new Float64Array(12), ecr = new Float64Array(12), cons = new Float64Array(12), ach = new Float64Array(12);
+  for (let i = 0; i < A.n; i++) { const m = A.mois[i], d = Math.min(s.P[i], s.C[i]) + s.dch[i]; loc[m] += d; const x = s.inj[i]; const e = Math.max(x - (P.seuil_vigilance - 1) * s.C[i], 0); ecr[m] += e; exp[m] += Math.max(s.P[i] - s.C[i], 0) - s.ch[i] - e; cons[m] += s.C[i]; ach[m] += s.C[i] - d; }
+  const M = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+  const N = { loc: "production consommée sur place", exp: "surplus envoyé au réseau", ecr: "écrêté (> 120 %)", cl: "conso couverte localement", ca: "conso achetée au réseau" };
+  const G = v => Array.from(v, x => r1(Math.max(x, 0) / 1000));
+  const bar = (name, stack, data, color, extra = {}) => ({ name, type: "bar", stack, data, itemStyle: { color }, emphasis: { disabled: true }, ...extra });
+  const consLoc = Array.from(cons, (v, m) => r1((v - ach[m]) / 1000));
+  const series = [bar(N.loc, "p", G(loc), c.bocage, { barGap: "8%", barCategoryGap: "26%" }), bar(N.exp, "p", G(exp), hexA(c.accent, .55)), bar(N.ecr, "p", G(ecr), c.seuil),
+    bar(N.cl, "c", consLoc, hexA(c.bocage, .35)), bar(N.ca, "c", G(ach), hexA(c.ink3, .55))];
+  const opt = { ...ecBase(c), legend: legSel("c-mois", Object.values(N)), grid: { left: 46, right: 12, top: 26, bottom: 28 },
+    xAxis: { type: "category", data: M, axisTick: { show: false }, axisLine: { lineStyle: { color: c.ink3 } }, axisLabel: { ...axTxt(c), interval: 0 } },
+    yAxis: { type: "value", name: "GWh", nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: axTxt(c), splitLine: { lineStyle: { color: c.line2 } } }, series };
+  opt.tooltip.axisPointer = { type: "shadow", shadowStyle: { color: hexA(c.ink3, .12) } };
+  opt.tooltip.formatter = ps => { const m = ps[0].dataIndex, g = v => fr(v / 1000, 1);
+    return `<b>${M[m]} ${P.annee}</b><br>production : ${g(loc[m] + Math.max(exp[m], 0) + ecr[m])} GWh<br>&nbsp;· consommée sur place ${g(loc[m])} · surplus réseau ${g(Math.max(exp[m], 0))} · écrêtée ${g(ecr[m])}<br>consommation : ${g(cons[m])} GWh<br>&nbsp;· couverte localement ${g(cons[m] - ach[m])} · achetée ${g(ach[m])}`; };
+  $("bm-sub").textContent = `Barre de gauche : production · barre de droite : consommation — ${P.annee}`;
+  setLegend("c-mois", "lg-mois", [[N.loc, "background:var(--bocage)", "a"], [N.exp, "background:var(--accent);opacity:.55", "a"], [N.ecr, "background:var(--seuil)", "a"], [N.cl, "background:var(--bocage);opacity:.35", "a"], [N.ca, "background:var(--ink-3);opacity:.55", "a"]]);
+  drawChart("c-mois", opt);
+}
+let mapL = null, mapCom = null, mapPostes = null, mapFit = false;
+// ---- éléments affichés (menu « Affichage »), barre latérale et couches de carte, mémorisés dans le navigateur
+const BLOCS = [
+  ["Textes", [["b-resume", "Résumé du scénario"], ["b-verdict", "Verdict"]]],
+  ["Graphiques et carte", [["b-jour", "Journée type"], ["b-carte", "Carte : communes et postes sources"], ["b-mois", "Bilan mois par mois"]]],
+  ["Vue expert", [["b-heures", "Deux semaines heure par heure"], ["b-hyp", "Toutes les hypothèses"], ["b-annees", "Indicateurs 2021-2025"]]]
+];
+const MENU_IDS = BLOCS.flatMap(g => g[1].map(x => x[0]));
+const KPI_IDS = ["k-prod", "k-auto", "k-solde", "k-ecr", "k-vig", "k-pointes", "k-cout"];
+const ALL_IDS = [...KPI_IDS, ...MENU_IDS];
+let offSet = new Set(), showPostes = true, showDens = false, sideOpen = !matchMedia("(max-width:900px)").matches, dispOpen = false, infoOpen = null;
+try { const o = JSON.parse(localStorage.getItem("mauges.affichage") || "{}"); offSet = new Set((o.off || []).filter(id => ALL_IDS.includes(id))); if (o.postes === false) showPostes = false; if (o.dens === true) showDens = true; if (typeof o.side === "boolean") sideOpen = o.side; if (o.disp === true) dispOpen = true; } catch (e) { /* stockage indisponible : réglages par défaut */ }
+function savePrefs() { try { localStorage.setItem("mauges.affichage", JSON.stringify({ off: [...offSet], postes: showPostes, dens: showDens, side: sideOpen, disp: dispOpen })); } catch (e) { /* ignoré */ } }
+function showInfo() {
+  for (const card of document.querySelectorAll(".kpi")) { const open = card.id === infoOpen, pop = card.querySelector(".k-pop"), btn = card.querySelector(".k-info");
+    if (btn) btn.setAttribute("aria-expanded", open);
+    if (pop) { pop.hidden = !open; if (open) { pop.style.left = "0"; pop.style.right = "auto"; if (pop.getBoundingClientRect().right > innerWidth - 8) { pop.style.left = "auto"; pop.style.right = "0"; } } } }
+}
+function applyVis() {
+  for (const id of ALL_IDS) { if (KPI_IDS.includes(id)) continue; const el = document.getElementById(id); if (el) el.classList.toggle("user-off", offSet.has(id)); }
+  // indicateurs : masqués = repliés en pastille (œil barré) sous la grille, pour pouvoir les rétablir d'un clic
+  const on = $("kpis"), off = $("kpis-off");
+  for (const id of KPI_IDS) { const el = document.getElementById(id); if (!el) continue; const hid = offSet.has(id); el.classList.toggle("k-min", hid); (hid ? off : on).appendChild(el);
+    const eye = el.querySelector(".k-eye"); if (eye) eye.setAttribute("aria-label", (hid ? "Afficher « " : "Masquer « ") + eye.dataset.name + " »"); }
+  on.classList.toggle("user-off", !on.querySelector(".kpi")); off.classList.toggle("user-off", !off.querySelector(".kpi"));
+  if (infoOpen && offSet.has(infoOpen)) infoOpen = null;
+  showInfo();
+  const vis = ["b-jour", "b-carte"].filter(id => !offSet.has(id)), row = document.querySelector(".row2");
+  row.classList.toggle("single", vis.length === 1); row.classList.toggle("user-off", vis.length === 0);
+  for (const cb of document.querySelectorAll("#menu-body input")) cb.checked = !offSet.has(cb.dataset.id);
+}
+function setDisp(open) {
+  dispOpen = open;
+  document.body.classList.toggle("disp-open", open);
+  $("menu-toggle").setAttribute("aria-expanded", open);
+  $("menu-toggle").setAttribute("aria-label", `${open ? "Replier" : "Afficher"} les éléments`);
+  $("menu-toggle").title = open ? "Replier l'affichage" : "Afficher les éléments";
+  $("menu-chevron").setAttribute("d", open ? "M6 3l5 5-5 5" : "M10 3L5 8l5 5");
+  savePrefs();
+}
+function setSide(open) {
+  sideOpen = open;
+  document.body.classList.toggle("side-closed", !open);
+  $("side-toggle").setAttribute("aria-expanded", open);
+  $("side-toggle").setAttribute("aria-label", `${open ? "Replier" : "Afficher"} les réglages`);
+  $("side-toggle").title = open ? "Replier" : "Afficher les réglages";
+  $("side-chevron").setAttribute("d", open ? "M10 3L5 8l5 5" : "M6 3l5 5-5 5");
+  savePrefs();
+}
+(function buildMenu() {
+  $("menu-body").innerHTML = BLOCS.map(([g, items]) => `<div class="dg"><span class="label">${g}</span>${items.map(([id, t]) => `<label class="mrow"><input type="checkbox" data-id="${id}" checked>${t}</label>`).join("")}</div>`).join("");
+  $("menu-body").onchange = e => { const id = e.target.dataset.id; if (!id) return; e.target.checked ? offSet.delete(id) : offSet.add(id); savePrefs(); applyVis(); };
+  $("menu-all").onclick = () => { for (const id of MENU_IDS) offSet.delete(id); savePrefs(); applyVis(); };
+  $("menu-none").onclick = () => { for (const id of MENU_IDS) offSet.add(id); savePrefs(); applyVis(); };
+  // barre d'affichage (à droite) : elle pousse le contenu, la page reste utilisable
+  $("menu-toggle").onclick = () => setDisp(!dispOpen);
+  setDisp(dispOpen);
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && infoOpen) { infoOpen = null; showInfo(); } });
+  // indicateurs : œil (masquer / afficher) et « i » (explication)
+  const kpiClick = e => { const b = e.target.closest(".k-btn"); if (!b) return; const id = b.closest(".kpi").id;
+    if (b.classList.contains("k-eye")) { offSet.has(id) ? offSet.delete(id) : offSet.add(id); savePrefs(); applyVis(); }
+    else { infoOpen = infoOpen === id ? null : id; showInfo(); } };
+  $("kpis").addEventListener("click", kpiClick); $("kpis-off").addEventListener("click", kpiClick);
+  document.addEventListener("click", e => { if (infoOpen && !e.target.closest(".kpi")) { infoOpen = null; showInfo(); } });
+  // barre latérale
+  $("side-toggle").onclick = () => setSide(!sideOpen);
+  setSide(sideOpen);
+  for (const button of document.querySelectorAll(".map-info")) button.onclick = () => {
+    const help = $(button.getAttribute("aria-controls")), open = help.hidden;
+    for (const other of document.querySelectorAll(".map-info")) {
+      $(other.getAttribute("aria-controls")).hidden = true;
+      other.setAttribute("aria-expanded", false);
+    }
+    help.hidden = !open;
+    button.setAttribute("aria-expanded", open);
+  };
+  // couches de la carte
+  $("postes_on").checked = showPostes; $("dens_on").checked = showDens;
+  $("postes_on").onchange = () => { showPostes = $("postes_on").checked; savePrefs(); if (mapL) applyPostes(); };
+  $("dens_on").onchange = () => { showDens = $("dens_on").checked; savePrefs(); if (mapL && lastR) renderCarte(); };
+})();
+// surface d'une commune (km²), calculée sur le contour : projection locale en km, formule du lacet ; trous déduits
+function surfaceKm2(f) {
+  if (f.properties._km2) return f.properties._km2;
+  const ring = r => { const k = Math.cos(r[0][1] * Math.PI / 180) * 111.32, pts = r.map(([lo, la]) => [lo * k, la * 110.574]); let a = 0;
+    for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; a += x1 * y2 - x2 * y1; } return Math.abs(a) / 2; };
+  let km2 = 0; for (const poly of f.geometry.coordinates) km2 += ring(poly[0]) - poly.slice(1).reduce((t, h) => t + ring(h), 0);
+  return (f.properties._km2 = km2);
+}
+let densRange = [0, 0];
+function fitMap() { const el = $("c-carte"); if (mapFit || !mapL || !el.offsetWidth) return; mapL.invalidateSize();
+  const pts = []; for (const f of GEO.communes.features) for (const poly of f.geometry.coordinates) for (const [lo, la] of poly[0]) pts.push([la, lo]); for (const p of GEO.postes) pts.push([p.lat, p.lon]);
+  mapL.fitBounds(L.latLngBounds(pts), { padding: [24, 24] }); mapFit = true; }
+function applyPostes() {
+  if (showPostes) { if (!mapL.hasLayer(mapPostes)) mapL.addLayer(mapPostes); } else { mapL.removeLayer(mapPostes); $("tip").hidden = true; }
+  const sz = getComputedStyle(document.documentElement).getPropertyValue("--seuil").trim();
+  $("lg-carte").innerHTML = (showPostes
+    ? `<span><i class="a" style="background:var(--accent)"></i>capacité suffisante</span><span><i class="a" style="background:var(--warn)"></i>remplie à plus de 90 %</span><span><i class="a" style="background:var(--ko)"></i>✕ dépassée (hachuré)</span><span>Taille : MW raccordés · Caparéseau, juin 2026</span>`
+    : `<span>Postes sources masqués</span>`)
+    + (showDens
+      ? `<span><i class="a" style="width:56px;background:linear-gradient(90deg,${hexA(sz, .1)},${hexA(sz, .68)})"></i>densité de puissance ENR du scénario : ${fr(densRange[0], 2)} à ${fr(densRange[1], 2)} MW/km² · surface communale brute, hors contraintes foncières</span>`
+      : `<span>Couleur des communes : puissance solaire + éolien du scénario</span>`);
+}
+function renderCarte() {
+  const el = $("c-carte");
+  if (typeof L === "undefined") { el.innerHTML = '<p class="note" style="padding:16px">Bibliothèque de carte (Leaflet) non chargée : vérifier la connexion Internet.</p>'; return; }
+  const css = getComputedStyle(document.documentElement), v = n => css.getPropertyValue(n).trim();
+  const cSeuil = v("--seuil"), cBocage = v("--bocage"), cAccent = v("--accent"), cWarn = v("--warn"), cKo = v("--ko"), cPanel = v("--panel"), cInk = v("--ink");
+
+  if (!mapL) {
+    mapL = L.map(el, { zoomSnap: 0.25, attributionControl: true }).setView([47.18, -0.88], 10);
+    const attrEsri = "Fond © Esri, HERE, Garmin, OpenStreetMap contributeurs";
+    const esri = (svc, max, attr) => L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/" + svc + "/MapServer/tile/{z}/{y}/{x}", { maxZoom: max, attribution: attr || attrEsri });
+    const fonds = {
+      "OpenStreetMap": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributeurs' }),
+      "Relief (Esri topo)": esri("World_Topo_Map", 19),
+      "Plan clair (Esri gris clair)": esri("Canvas/World_Light_Gray_Base", 16),
+      "Plan (Esri rues)": esri("World_Street_Map", 19),
+      "Sans fond de carte": L.layerGroup()
+    };
+    const defaut = fonds["Relief (Esri topo)"]; defaut.addTo(mapL);
+    L.control.layers(fonds, null, { collapsed: true, position: "topright" }).addTo(mapL);
+    // Fond injoignable (hors ligne, réseau filtré) : on bascule sans fond, contours et postes restent lisibles.
+    let nErr = 0, basc = false;
+    defaut.on("tileerror", () => { if (basc || ++nErr < 6) return; basc = true; mapL.removeLayer(defaut); fonds["Sans fond de carte"].addTo(mapL);
+      const n = document.createElement("div"); n.className = "map-note"; n.textContent = "Fond de carte indisponible : contours et postes affichés seuls."; el.appendChild(n); });
+    mapCom = L.layerGroup().addTo(mapL); mapPostes = L.layerGroup().addTo(mapL);
+    if (window.ResizeObserver) new ResizeObserver(() => { mapL.invalidateSize(); fitMap(); }).observe(el);
+    setTimeout(() => mapL.invalidateSize(), 200);
+  }
+
+  const feats = GEO.communes.features, tip = $("tip");
+  const maxMW = Math.max(...feats.map(f => f.properties.pv_MW * P.m_pv + f.properties.eol_MW * P.m_eol));
+  const dens = f => (f.properties.pv_MW * P.m_pv + f.properties.eol_MW * P.m_eol) / surfaceKm2(f), dArr = feats.map(dens), maxD = Math.max(...dArr);
+  densRange = [Math.min(...dArr), maxD];
+  const labelClasses = {
+    "Beaupréau-en-Mauges": "beaupreau",
+    "Chemillé-en-Anjou": "chemille",
+    "Orée d'Anjou": "oree",
+    "Montrevault-sur-Èvre": "montrevault",
+    "Mauges-sur-Loire": "mauges",
+    "Sèvremoine": "sevremoine"
+  };
+  const moveTip = (e, html) => { tip.hidden = false; tip.style.left = (e.clientX + 14) + "px"; tip.style.top = (e.clientY - 10) + "px"; if (html) tip.innerHTML = html; };
+
+  // Communes : remplissage proportionnel à la puissance ENR du scénario, nom affiché
+  mapCom.clearLayers();
+  for (const f of feats) {
+    const pr = f.properties, mw = pr.pv_MW * P.m_pv + pr.eol_MW * P.m_eol;
+    const km2 = surfaceKm2(f), d = mw / km2, d0 = (pr.pv_MW + pr.eol_MW) / km2;
+    const poly = L.geoJSON(f, { style: showDens ? { color: cSeuil, weight: 1.4, fillColor: cSeuil, fillOpacity: 0.06 + 0.62 * d / maxD } : { color: cBocage, weight: 1.4, fillColor: cBocage, fillOpacity: 0.08 + 0.42 * mw / maxMW } }).addTo(mapCom);
+    const html = `<b>${pr.nom}</b><br>${pr.population.toLocaleString("fr-FR")} habitants · ${fr(km2, 0)} km²<br>parc actuel : ${fr(pr.pv_MW, 1)} MW PV · ${fr(pr.eol_MW, 1)} MW éolien<br>scénario : ${fr(mw, 1)} MW<br>densité de puissance : ${fr(d0, 2)} → <b>${fr(d, 2)} MW/km²</b>`;
+    poly.on("mousemove", e => moveTip(e.originalEvent, html)); poly.on("mouseout", () => { tip.hidden = true; });
+    const ring = f.geometry.coordinates[0][0], cx = ring.reduce((a, p) => a + p[0], 0) / ring.length, cy = ring.reduce((a, p) => a + p[1], 0) / ring.length;
+    L.marker([cy, cx], { interactive: false, keyboard: false, icon: L.divIcon({ className: `commune-lbl commune-${labelClasses[pr.nom] || "default"}`, html: `<span class="cl">${pr.nom}${showDens ? `<span class="cd">${fr(d, 2)} MW/km²</span>` : ""}</span>`, iconSize: [0, 0] }) }).addTo(mapCom);
+  }
+
+  // Postes sources : taille = MW raccordés, couleur = taux de remplissage S3REnR, hachuré si dépassé
+  mapPostes.clearLayers();
+  const aj = ajoutsPostes();
+  for (const p of aj) {
+    const mw = p.pv_MW * P.m_pv + p.eol_MW * P.m_eol, r = 5 + Math.sqrt(mw) * 1.4, ko = p.remplissage > 1.0001;
+    const fill = ko ? `url(#hatch-${p.code})` : p.remplissage > 0.9 ? cWarn : cAccent;
+    const w = p.code.length * 7.2 + 8, Wt = 2 * r + 8 + w + 6, Ht = 2 * r + 6, cy0 = Ht / 2, cx0 = r + 3;
+    const svg = `<svg width="${Wt}" height="${Ht}" viewBox="0 0 ${Wt} ${Ht}">
+      <defs><pattern id="hatch-${p.code}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="${cKo}"/><line x1="0" y1="0" x2="0" y2="5" stroke="${cPanel}" stroke-width="2"/></pattern></defs>
+      <circle cx="${cx0}" cy="${cy0}" r="${r}" fill="${fill}" stroke="${ko ? cKo : cPanel}" stroke-width="2"/>
+      <rect x="${cx0 + r + 3}" y="${cy0 - 9}" width="${w}" height="16" fill="${cPanel}" stroke="${cInk}" rx="2"/>
+      <text x="${cx0 + r + 7}" y="${cy0 + 3}" style="fill:${cInk};font-size:11px;font-family:var(--f-body)">${p.code}</text>
+      <circle cx="${cx0}" cy="${cy0}" r="${r + 8}" fill="transparent"/></svg>`;
+    const m = L.marker([p.lat, p.lon], { zIndexOffset: ko ? 1000 : 0, keyboard: false, icon: L.divIcon({ className: "poste-ico", html: svg, iconSize: [Wt, Ht], iconAnchor: [cx0, cy0] }) }).addTo(mapPostes);
+    const html = `<b>${p.nom}</b> (${p.code})<br>parc des Mauges : ${fr(p.pv_MW, 1)} MW PV · ${fr(p.eol_MW, 1)} MW éolien<br>capacité réservée S3REnR : ${fr(p.capacite_reservee_MW, 1)} MW<br>restant à affecter : ${fr(p.restant_MW, 1)} MW (${p.taux_remplissage} rempli)<br>ajout du scénario : ${fr(p.ajout, 1)} MW${p.depasse > 0.05 ? ` → <b>dépassement ${fr(p.depasse, 1)} MW</b>` : ""}`;
+    const bind = () => { const node = m.getElement(); if (!node || node._bound) return; node._bound = true;   // l'élément n'existe que lorsque la couche est affichée
+      node.addEventListener("mousemove", e => moveTip(e, html)); node.addEventListener("mouseleave", () => { tip.hidden = true; }); node.addEventListener("click", e => moveTip(e, html)); };
+    m.on("add", bind); bind();
+  }
+
+  fitMap(); applyPostes();
+}
+// ---- vue expert
+function renderExpert() {
+  const s = lastSeries, A = ANS[P.annee], d0 = +$("semaine").value * 7 * 24, n = 14 * 24, c = cols();
+  const idx = Array.from({ length: n }, (_, k) => Math.min(d0 + k, A.n - 1));
+  const t0 = Date.UTC(+P.annee, 0, 1), ts = idx.map(i => t0 + i * 3600e3);
+  const E = lastR.bat_energie_MWh, bat = E > 0;
+  const N = { eol: "éolien (+ bio, hydro)", pv: "solaire", conso: "consommation", seuil: "seuil 120 %", soc: "état de charge" };
+  const xy = f => idx.map((i, k) => [ts[k], r1(f(i))]);
+  const area = (name, data, color) => ({ name, type: "line", stack: "prod", symbol: "none", data, lineStyle: { width: 0 }, areaStyle: { color }, emphasis: { disabled: true } });
+  const series = [area(N.eol, xy(i => s.eol[i] + A.autres[i]), hexA(c.eol, .85)), area(N.pv, xy(i => s.pv[i]), hexA(c.pv, .85)),
+    { name: N.seuil, type: "line", symbol: "none", data: xy(i => s.C[i] * 1.2), lineStyle: { color: c.seuil, width: 1.2, type: "dashed" }, itemStyle: { color: c.seuil }, emphasis: { disabled: true } },
+    { name: N.conso, type: "line", symbol: "none", data: xy(i => s.C[i]), lineStyle: { color: c.ink, width: 1.8 }, itemStyle: { color: c.ink }, emphasis: { disabled: true } }];
+  if (bat) series.push({ name: N.soc, type: "line", xAxisIndex: 1, yAxisIndex: 1, symbol: "none", data: xy(i => s.soc[i]), lineStyle: { color: c.bat, width: 2 }, itemStyle: { color: c.bat }, areaStyle: { color: hexA(c.bat, .14) }, emphasis: { disabled: true } });
+  const fmtT = v => { const d = new Date(v); return d.getUTCHours() === 0 ? `${d.getUTCDate()}/${d.getUTCMonth() + 1}` : `${d.getUTCHours()} h`; };
+  const xAx = (gi, labels) => ({ type: "time", gridIndex: gi, boundaryGap: false, axisTick: { show: false }, axisLine: { lineStyle: { color: c.ink3 } },
+    axisLabel: { ...axTxt(c), show: labels, hideOverlap: true, formatter: fmtT }, splitLine: { show: true, lineStyle: { color: c.line2 } }, axisPointer: { show: true } });
+  const H = bat ? 480 : 380, xIdx = bat ? [0, 1] : [0];
+  const opt = { ...ecBase(c), legend: legSel("c-heures", Object.values(N)),
+    grid: bat ? [{ left: 56, right: 16, top: 26, height: 250 }, { left: 56, right: 16, top: 306, height: 84 }] : [{ left: 56, right: 16, top: 26, bottom: 74 }],
+    xAxis: bat ? [xAx(0, false), xAx(1, true)] : [xAx(0, true)],
+    yAxis: [{ type: "value", gridIndex: 0, name: "MW", nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: axTxt(c), splitLine: { lineStyle: { color: c.line2 } } },
+      ...(bat ? [{ type: "value", gridIndex: 1, name: "MWh", min: 0, max: E, interval: E, nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: { ...axTxt(c), formatter: v => fr(v, 0) }, splitLine: { lineStyle: { color: c.line2 } } }] : [])],
+    axisPointer: { link: [{ xAxisIndex: "all" }] },
+    dataZoom: [{ type: "inside", xAxisIndex: xIdx, filterMode: "none", zoomOnMouseWheel: "ctrl", moveOnMouseMove: true, moveOnMouseWheel: false },
+      { type: "slider", xAxisIndex: xIdx, filterMode: "none", height: 22, bottom: 8, brushSelect: false, borderColor: c.line, fillerColor: hexA(c.accent, .16), backgroundColor: "transparent", dataBackground: { lineStyle: { color: c.ink3, opacity: .5 }, areaStyle: { color: c.line2 } }, selectedDataBackground: { lineStyle: { color: c.accent }, areaStyle: { color: hexA(c.accent, .25) } }, handleStyle: { color: c.accent, borderColor: c.accent }, moveHandleStyle: { color: c.ink3 }, textStyle: axTxt(c) }],
+    series };
+  opt.tooltip.formatter = ps => { const k = ps[0].dataIndex, i = idx[k], d = new Date(ts[k]);
+    const when = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long", timeZone: "UTC" }) + " · " + String(d.getUTCHours()).padStart(2, "0") + " h UTC";
+    return `<b>${when}</b><br>solaire ${fr(s.pv[i], 0)} MW · éolien ${fr(s.eol[i] + A.autres[i], 0)} MW<br>consommation ${fr(s.C[i], 0)} MW<br>seuil 120 % : ${fr(s.C[i] * 1.2, 0)} MW${bat ? `<br>état de charge ${fr(s.soc[i], 0)} / ${fr(E, 0)} MWh` : ""}`; };
+  $("c-soc").hidden = bat;
+  const dt = new Date(Date.UTC(+P.annee, 0, 1 + A.jour[idx[0]]));
+  $("v-sem").textContent = dt.toLocaleDateString("fr-FR", { day: "numeric", month: "long" }); $("hx-sub").textContent = `Année ${P.annee}, pas horaire, heure UTC`;
+  setLegend("c-heures", "lg-heures", [[N.eol, "background:var(--s-eol)", "a"], [N.pv, "background:var(--s-pv)", "a"], [N.conso, "background:var(--ink)"], [N.seuil, "background:var(--seuil)"], ...(bat ? [[N.soc, "background:var(--s-bat)"]] : [])]);
+  drawChart("c-heures", opt, H);
+  const colsT = [["couverture_horaire", "Taux de couverture h/h", 100, 1, "%"], ["couverture", "Prod. / conso", 100, 1, "%"], ["ecretement_part", "Écrêtement", 100, 1, "%"], ["heures_vigilance", "Heures de vigilance", 1, 0, "h"], ["pointe_injection_MW", "Pointe d'injection", 1, 0, "MW"], ["pointe_soutirage_MW", "Pointe d'appel", 1, 0, "MW"], ["surplus_exporte_MWh", "Surplus exporté", 1e-3, 1, "GWh"], ["deficit_importe_MWh", "Achat au réseau", 1e-3, 1, "GWh"], ["bat_cycles", "Cycles batterie", 1, 0, ""]];
+  $("t-annees").innerHTML = `<thead><tr><th>Année</th>${colsT.map(c => `<th style="text-align:right">${c[1]}${c[4] ? ` (${c[4]})` : ""}</th>`).join("")}</tr></thead><tbody>${META.annees.map((a, i) => `<tr${a === P.annee ? ' style="background:var(--accent-weak)"' : ""}><td class="mono">${a}${a === META.annee_typique ? " ·typ." : ""}</td>${colsT.map(c => `<td class="num">${fr(lastAll[i][c[0]] * c[2], c[3])}</td>`).join("")}</tr>`).join("")}</tbody>`;
+}
+function buildForm() {
+  const grp = { meteo: "Météo et volume", production: "Production", ecretement: "Écrêtement et seuils", conso: "Consommation 2035", ve: "Véhicules électriques", pac: "Pompes à chaleur", ecs: "Ballons d'eau chaude", batterie: "Batterie", economie: "Économie" };
+  let h = "", cur = "";
+  for (const [k, v] of Object.entries(META.parametres)) {
+    if (v.groupe !== cur) { cur = v.groupe; h += `<div class="grp label">${grp[cur] || cur}</div>`; }
+    if (k === "annee") continue;
+    const ctrl = v.choix ? `<select id="pf-${k}">${v.choix.map(c => `<option>${c}</option>`).join("")}</select>` : `<input type="number" id="pf-${k}" min="${v.min}" max="${v.max}" step="${v.pas}">`;
+    h += `<div class="pf"><label for="pf-${k}">${v.libelle}</label><div class="in">${ctrl}<span class="u">${v.unite || ""}</span></div><small>${v.source}</small></div>`;
+  }
+  $("pform").innerHTML = h;
+  for (const k of Object.keys(META.parametres)) { const el = $("pf-" + k); if (!el) continue;
+    el.onchange = () => { const v = META.parametres[k]; let x = v.choix ? el.value : Math.min(v.max, Math.max(v.min, +el.value)); P[k] = x; presetActif = null; syncControls(); syncForm(); render(); }; }
+}
+function syncForm() { for (const [k, v] of Object.entries(META.parametres)) { const el = $("pf-" + k); if (!el) continue; el.value = P[k]; el.classList.toggle("mod", P[k] !== v.defaut); } }
+$("reset").onclick = () => appliquerPreset("A");
+$("semaine").oninput = () => renderExpert();
+// ---- vues
+function setVue(v) {
+  vue = v;
+  for (const [name, value] of [["elu", "Élu"], ["demo", "Démo"], ["expert", "Expert"]]) {
+    for (const id of [`t-${name}`, `tb-${name}`]) {
+      const tab = $(id);
+      tab.setAttribute("aria-selected", name === v);
+      tab.setAttribute("aria-label", value);
+    }
+  }
+  $("v-elu").hidden = v === "expert"; $("v-expert").hidden = v !== "expert"; $("demo").hidden = v !== "demo";
+  document.body.classList.toggle("demo-on", v === "demo");
+  if (v === "demo") { demoStep = 0; demoGo(); } else clearHl();
+  if (v === "expert") { syncForm(); renderExpert(); }
+}
+for (const name of ["elu", "demo", "expert"]) for (const id of [`t-${name}`, `tb-${name}`]) $(id).onclick = () => setVue(name);
+// ---- démo
+const fmt = (x, d = 1) => fr(x, d);
+const DEMO = [
+  { p: "A", hl: "k-auto", h: "Aujourd'hui", t: r => `${fmt(K.Ppv_A + K.Peol_A, 0)} MW de solaire et d'éolien couvrent ${fmt(r.couverture_horaire * 100, 0)} % de la consommation, heure par heure.` },
+  { p: "B", hl: "k-ecr", h: "Doubler le solaire", t: r => `Le taux de couverture monte à ${fmt(r.couverture_horaire * 100, 0)} %, mais ${fmt(r.ecretement_part * 100)} % de la production serait perdue : au-delà de la limite de 5 %.` },
+  { p: "B_batterie", hl: "k-cout", h: "Ajouter la batterie de la fiche", t: r => `L'écrêtement retombe à ${fmt(r.ecretement_part * 100)} %… pour ${fmt(r.capex_batterie_EUR / 1e6, 0)} M€ d'investissement et ${fmt(r.om_annuel_EUR / 1e6, 0)} M€ d'entretien par an : plus que ce que la batterie fait gagner.` },
+  { p: "reco_sobre", hl: "k-auto", h: "Miser sur l'éolien et les ballons d'eau chaude", t: r => `${fmt(r.couverture_horaire * 100, 0)} % de taux de couverture, sous les 5 % chaque année, sans stockage.` },
+  { p: "reco_sobre", hl: "c-carte", h: "Où raccorder ?", t: () => { const s = ajoutsPostes().filter(p => p.depasse > 0.5).map(p => p.nom); return `${liste(s)} ${s.length > 1 ? "seraient saturés" : "serait saturé"} si l'on étendait le parc à l'identique : il faut orienter les nouveaux projets vers les postes encore libres.`; } },
+];
+function clearHl() { document.querySelectorAll(".hl").forEach(e => e.classList.remove("hl")); }
+function demoGo() { const d = DEMO[demoStep]; appliquerPreset(d.p); clearHl(); const el = $(d.hl); (el.closest(".card") || el).classList.add("hl");
+  $("demo-n").textContent = `Étape ${demoStep + 1} / ${DEMO.length}`; $("demo-h").textContent = d.h; $("demo-p").textContent = d.t(lastR);
+  (el.closest(".card") || el).scrollIntoView({ block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }
+$("demo-next").onclick = () => { demoStep = Math.min(DEMO.length - 1, demoStep + 1); demoGo(); };
+$("demo-prev").onclick = () => { demoStep = Math.max(0, demoStep - 1); demoGo(); };
+document.addEventListener("keydown", e => { if (e.target.closest("input,select")) return;
+  if (vue === "demo" && (e.key === "ArrowRight" || e.key === " ")) { e.preventDefault(); $("demo-next").click(); }
+  if (vue === "demo" && e.key === "ArrowLeft") $("demo-prev").click();
+});
+buildForm(); syncControls(); render();
+})();
+</script>

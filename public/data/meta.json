@@ -1,0 +1,532 @@
+{
+ "version_donnees": "2026-10-21",
+ "annees": [
+  2021,
+  2022,
+  2023,
+  2024,
+  2025
+ ],
+ "n_heures": {
+  "2021": 8760,
+  "2022": 8760,
+  "2023": 8760,
+  "2024": 8784,
+  "2025": 8760
+ },
+ "debut_utc": {
+  "2021": "2021-01-01T00:00:00Z",
+  "2022": "2022-01-01T00:00:00Z",
+  "2023": "2023-01-01T00:00:00Z",
+  "2024": "2024-01-01T00:00:00Z",
+  "2025": "2025-01-01T00:00:00Z"
+ },
+ "colonnes": [
+  "fc_pv",
+  "fc_eol",
+  "autres",
+  "c_reel",
+  "temp",
+  "heure",
+  "jour",
+  "doy"
+ ],
+ "dtype": "float32-le",
+ "constantes": {
+  "Ppv_A": 117.727,
+  "Peol_A": 114.4,
+  "conso_2024_MWh": 802666.0,
+  "part_residentiel": 0.38954,
+  "part_tertiaire": 0.18071,
+  "residences_principales_2023": 50957.0,
+  "maisons_part": 0.9344220557212484,
+  "logements_fossiles_2023": 13899.0,
+  "voitures_menages_2023": 74404.0,
+  "degres_heures_16_moyen": 39949.380000000005
+ },
+ "parametres": {
+  "annee": {
+   "defaut": 2022,
+   "min": 2021,
+   "max": 2025,
+   "pas": 1,
+   "unite": "",
+   "groupe": "meteo",
+   "libelle": "Année météo",
+   "source": "Année typique (JOURNAL §10.2) ; 2021-2025 disponibles"
+  },
+  "variante_conso": {
+   "defaut": "reelle",
+   "min": null,
+   "max": null,
+   "pas": null,
+   "unite": "",
+   "groupe": "meteo",
+   "libelle": "Volume de consommation",
+   "source": "« reelle » = volume mesuré de l'année ; « vol2024 » = ramené au volume 2024",
+   "choix": [
+    "reelle",
+    "vol2024"
+   ]
+  },
+  "m_pv": {
+   "defaut": 1.0,
+   "min": 0.0,
+   "max": 4.0,
+   "pas": 0.05,
+   "unite": "× parc 2025",
+   "groupe": "production",
+   "libelle": "Multiplicateur PV",
+   "source": "Fiche : A = 1, B = 2, C = 3"
+  },
+  "m_eol": {
+   "defaut": 1.0,
+   "min": 0.0,
+   "max": 3.0,
+   "pas": 0.05,
+   "unite": "× parc 2025",
+   "groupe": "production",
+   "libelle": "Multiplicateur éolien",
+   "source": "Fiche : A = B = 1, C = 1,5"
+  },
+  "pv_plafond": {
+   "defaut": 1.0,
+   "min": 0.4,
+   "max": 1.0,
+   "pas": 0.05,
+   "unite": "× Pc",
+   "groupe": "ecretement",
+   "libelle": "Plafond d'injection PV (écrêtement statique)",
+   "source": "Choix groupe ; 1 = pas d'écrêtement statique"
+  },
+  "seuil_vigilance": {
+   "defaut": 1.2,
+   "min": 1.0,
+   "max": 2.0,
+   "pas": 0.05,
+   "unite": "× C",
+   "groupe": "ecretement",
+   "libelle": "Seuil de vigilance / d'écrêtement dynamique",
+   "source": "Fiche : 120 % de la consommation horaire"
+  },
+  "ecretement_max": {
+   "defaut": 0.05,
+   "min": 0.0,
+   "max": 0.2,
+   "pas": 0.01,
+   "unite": "part prod.",
+   "groupe": "ecretement",
+   "libelle": "Écrêtement autorisé",
+   "source": "Fiche : 5 % de la production annuelle"
+  },
+  "horizon": {
+   "defaut": "actuel",
+   "min": null,
+   "max": null,
+   "pas": null,
+   "unite": "",
+   "groupe": "conso",
+   "libelle": "Horizon de consommation",
+   "source": "« actuel » ou « 2035 » (électrification)",
+   "choix": [
+    "actuel",
+    "2035"
+   ]
+  },
+  "pop_facteur": {
+   "defaut": 1.029,
+   "min": 0.99,
+   "max": 1.07,
+   "pas": 0.001,
+   "unite": "× 2023",
+   "groupe": "conso",
+   "libelle": "Population 2035 / 2023",
+   "source": "INSEE Omphale 49, scénario central (basse 0,996 ; haute 1,063)"
+  },
+  "renovation": {
+   "defaut": 0.1,
+   "min": 0.0,
+   "max": 0.3,
+   "pas": 0.01,
+   "unite": "part",
+   "groupe": "conso",
+   "libelle": "Baisse de la conso résidentielle (rénovation)",
+   "source": "Fiche Projet 1 : 10 %"
+  },
+  "part_ve": {
+   "defaut": 0.4,
+   "min": 0.0,
+   "max": 1.0,
+   "pas": 0.01,
+   "unite": "part du parc",
+   "groupe": "ve",
+   "libelle": "Part de VE dans le parc 2035",
+   "source": "Fiche Projet 1 : 40 %"
+  },
+  "km_jour": {
+   "defaut": 30.0,
+   "min": 10.0,
+   "max": 60.0,
+   "pas": 1.0,
+   "unite": "km/j",
+   "groupe": "ve",
+   "libelle": "Distance quotidienne",
+   "source": "Fiche Projets 1 et 3 : 30 km"
+  },
+  "conso_ve": {
+   "defaut": 18.0,
+   "min": 12.0,
+   "max": 25.0,
+   "pas": 0.5,
+   "unite": "kWh/100 km",
+   "groupe": "ve",
+   "libelle": "Consommation d'un VE",
+   "source": "Fiche Projets 1 et 3 : 18 kWh/100 km"
+  },
+  "rdt_recharge": {
+   "defaut": 0.9,
+   "min": 0.8,
+   "max": 1.0,
+   "pas": 0.01,
+   "unite": "",
+   "groupe": "ve",
+   "libelle": "Rendement de recharge",
+   "source": "Fiche Projet 3 : 90 %"
+  },
+  "p_borne": {
+   "defaut": 7.4,
+   "min": 3.7,
+   "max": 22.0,
+   "pas": 0.1,
+   "unite": "kW",
+   "groupe": "ve",
+   "libelle": "Puissance de recharge domestique",
+   "source": "Fiche Projet 3 : 3,7 ou 7,4 kW"
+  },
+  "ve_non_pilote": {
+   "defaut": 0.3,
+   "min": 0.0,
+   "max": 1.0,
+   "pas": 0.01,
+   "unite": "part des VE",
+   "groupe": "ve",
+   "libelle": "VE sans pilotage",
+   "source": "RTE BP2025 (2030) : 30 %"
+  },
+  "ve_pilote": {
+   "defaut": 0.08,
+   "min": 0.0,
+   "max": 1.0,
+   "pas": 0.01,
+   "unite": "part des VE",
+   "groupe": "ve",
+   "libelle": "VE pilotés sur les surplus (le reste = tarifaire)",
+   "source": "RTE BP2025 (2030) : 8 % dynamique ; tarifaire 62 %"
+  },
+  "ve_dispo_journee": {
+   "defaut": 0.5,
+   "min": 0.0,
+   "max": 1.0,
+   "pas": 0.05,
+   "unite": "part",
+   "groupe": "ve",
+   "libelle": "Part de l'énergie pilotée disponible en journée",
+   "source": "Hypothèse groupe (VE branché au travail / à domicile)"
+  },
+  "pac_part": {
+   "defaut": 0.25,
+   "min": 0.0,
+   "max": 0.6,
+   "pas": 0.01,
+   "unite": "part des RP",
+   "groupe": "pac",
+   "libelle": "Logements passés à la PAC en 2035",
+   "source": "Fiche Projet 1 : 25 % des logements"
+  },
+  "pac_cop": {
+   "defaut": 3.0,
+   "min": 2.0,
+   "max": 4.5,
+   "pas": 0.1,
+   "unite": "",
+   "groupe": "pac",
+   "libelle": "COP saisonnier",
+   "source": "Fiche Projet 1 : 3"
+  },
+  "besoin_chauffage": {
+   "defaut": 10.0,
+   "min": 5.0,
+   "max": 18.0,
+   "pas": 0.5,
+   "unite": "MWh utile/logt/an",
+   "groupe": "pac",
+   "libelle": "Besoin de chauffage d'un logement converti",
+   "source": "Hypothèse groupe — à sourcer"
+  },
+  "t_base_chauffage": {
+   "defaut": 16.0,
+   "min": 14.0,
+   "max": 18.0,
+   "pas": 0.5,
+   "unite": "°C",
+   "groupe": "pac",
+   "libelle": "Température de non-chauffage",
+   "source": "Convention DJU"
+  },
+  "ecs_part": {
+   "defaut": 0.519,
+   "min": 0.0,
+   "max": 1.0,
+   "pas": 0.01,
+   "unite": "part des RP",
+   "groupe": "ecs",
+   "libelle": "Logements avec ballon électrique",
+   "source": "ADEME : 51,9 % des maisons individuelles"
+  },
+  "ecs_conso": {
+   "defaut": 1.0,
+   "min": 0.5,
+   "max": 2.5,
+   "pas": 0.1,
+   "unite": "MWh/an/ballon",
+   "groupe": "ecs",
+   "libelle": "Consommation d'un ballon",
+   "source": "RTE : ~15 TWh/an pour ~15 M de ballons"
+  },
+  "ecs_p": {
+   "defaut": 2.2,
+   "min": 1.0,
+   "max": 3.5,
+   "pas": 0.1,
+   "unite": "kW",
+   "groupe": "ecs",
+   "libelle": "Puissance d'un ballon",
+   "source": "Hypothèse (résistance usuelle 2-3 kW)"
+  },
+  "ecs_deplace": {
+   "defaut": 0.0,
+   "min": 0.0,
+   "max": 1.0,
+   "pas": 0.05,
+   "unite": "part des ballons",
+   "groupe": "ecs",
+   "libelle": "Ballons déplacés vers la journée",
+   "source": "Solution testée ; 0 = référence (chauffe de nuit)"
+  },
+  "bat_pilotage": {
+   "defaut": "aucune",
+   "min": null,
+   "max": null,
+   "pas": null,
+   "unite": "",
+   "groupe": "batterie",
+   "libelle": "Pilotage de la batterie",
+   "source": "« aucune », « glouton » ou « pointe »",
+   "choix": [
+    "aucune",
+    "glouton",
+    "pointe"
+   ]
+  },
+  "bat_puissance": {
+   "defaut": 1.0,
+   "min": 0.0,
+   "max": 2.0,
+   "pas": 0.05,
+   "unite": "× Ppv du scénario",
+   "groupe": "batterie",
+   "libelle": "Puissance de la batterie",
+   "source": "Fiche : puissance PV nominale"
+  },
+  "bat_duree": {
+   "defaut": 2.0,
+   "min": 0.5,
+   "max": 8.0,
+   "pas": 0.5,
+   "unite": "h",
+   "groupe": "batterie",
+   "libelle": "Durée (énergie / puissance)",
+   "source": "Fiche : 2 h"
+  },
+  "bat_rdt": {
+   "defaut": 0.9,
+   "min": 0.7,
+   "max": 0.98,
+   "pas": 0.01,
+   "unite": "",
+   "groupe": "batterie",
+   "libelle": "Rendement aller-retour",
+   "source": "Fiche : 90 %"
+  },
+  "bat_soc0": {
+   "defaut": 0.5,
+   "min": 0.0,
+   "max": 1.0,
+   "pas": 0.05,
+   "unite": "",
+   "groupe": "batterie",
+   "libelle": "État de charge initial",
+   "source": "Choix groupe"
+  },
+  "cout_bat": {
+   "defaut": 395.0,
+   "min": 150.0,
+   "max": 800.0,
+   "pas": 5.0,
+   "unite": "€/kWh",
+   "groupe": "economie",
+   "libelle": "Coût de la batterie installée (2 h)",
+   "source": "NREL, Cost Projections for Utility-Scale Battery Storage 2025 : 241 $/kWh + 372 $/kW (2024) → 427 $/kWh en 2 h, × 0,924 €/$ (BCE, moyenne 2024) ; Projet 6 : 500"
+  },
+  "om_bat": {
+   "defaut": 49.0,
+   "min": 0.0,
+   "max": 80.0,
+   "pas": 1.0,
+   "unite": "€/kW/an",
+   "groupe": "economie",
+   "libelle": "Exploitation-maintenance de la batterie (par kW de puissance)",
+   "source": "NREL 2025 : 4 %/an du coût en $/kW d'une batterie 4 h (241×4 + 372 = 1 336 $/kW → 53,4 $/kW/an × 0,924 €/$ = 49 €/kW/an), compensation de la dégradation incluse ; Projet 6 : 0 (audit 21/10/2026, JOURNAL §18)"
+  },
+  "prix_achat": {
+   "defaut": 0.194,
+   "min": 0.05,
+   "max": 0.4,
+   "pas": 0.001,
+   "unite": "€/kWh",
+   "groupe": "economie",
+   "libelle": "Prix de l'électricité importée évitée",
+   "source": "TRVE option Base au 01/02/2026 (CRE) : 13,08 c€ HT + accise 3,085 c€, TVA 20 % → 0,194 ; vue prix de gros : spot moyen 2025 0,061 (RTE) ; Projet 6 : 0,20"
+  },
+  "prix_surplus": {
+   "defaut": 0.02,
+   "min": 0.0,
+   "max": 0.2,
+   "pas": 0.005,
+   "unite": "€/kWh",
+   "groupe": "economie",
+   "libelle": "Valorisation du surplus injecté",
+   "source": "CRE, délibération 2026-92 : valeur économique du surplus PV ≈ 20 €/MWh (2025) ; Projet 6 : 0,07"
+  },
+  "duree_analyse": {
+   "defaut": 15,
+   "min": 5,
+   "max": 25,
+   "pas": 1,
+   "unite": "ans",
+   "groupe": "economie",
+   "libelle": "Durée d'analyse",
+   "source": "NREL 2025 : durée de vie 15 ans ; Projet 6 : 10 ans"
+  },
+  "taux_actu": {
+   "defaut": 0.04,
+   "min": 0.0,
+   "max": 0.1,
+   "pas": 0.005,
+   "unite": "",
+   "groupe": "economie",
+   "libelle": "Taux d'actualisation",
+   "source": "RTE, Futurs énergétiques 2050 : coût du capital 4 % ; Projet 6 : 5 %"
+  }
+ },
+ "presets": {
+  "A": {
+   "libelle": "A — parc actuel",
+   "p": {
+    "m_pv": 1.0,
+    "m_eol": 1.0
+   }
+  },
+  "B": {
+   "libelle": "B — +100 % PV",
+   "p": {
+    "m_pv": 2.0,
+    "m_eol": 1.0
+   }
+  },
+  "C": {
+   "libelle": "C — +200 % PV, +50 % éolien",
+   "p": {
+    "m_pv": 3.0,
+    "m_eol": 1.5
+   }
+  },
+  "B_batterie": {
+   "libelle": "B + batterie de la fiche (pointe)",
+   "p": {
+    "m_pv": 2.0,
+    "m_eol": 1.0,
+    "bat_pilotage": "pointe"
+   }
+  },
+  "C_batterie": {
+   "libelle": "C + batterie de la fiche (pointe)",
+   "p": {
+    "m_pv": 3.0,
+    "m_eol": 1.5,
+    "bat_pilotage": "pointe"
+   }
+  },
+  "reco_sobre": {
+   "libelle": "Recommandée sans stockage : PV +25 %, éolien +50 %, ballons à midi",
+   "p": {
+    "m_pv": 1.25,
+    "m_eol": 1.5,
+    "ecs_deplace": 1.0
+   }
+  },
+  "reco_batterie": {
+   "libelle": "Variante avec batterie : PV +50 %, éolien +75 %, ballons à midi, 283 MWh (taille minimale)",
+   "p": {
+    "m_pv": 1.5,
+    "m_eol": 1.75,
+    "ecs_deplace": 1.0,
+    "bat_pilotage": "pointe",
+    "bat_puissance": 0.8
+   }
+  },
+  "2035_reference": {
+   "libelle": "Électrification 2035 (fiche Projets 1 et 3)",
+   "p": {
+    "horizon": "2035"
+   }
+  }
+ },
+ "profils": {
+  "VE_ARRIVEE_SOIR": [
+   18,
+   21
+  ],
+  "VE_PART_SOIR": 0.7,
+  "VE_ARRIVEE_JOUR": [
+   7,
+   18
+  ],
+  "HC_NUIT": [
+   22,
+   6
+  ],
+  "FENETRE_JOUR": [
+   9,
+   17
+  ],
+  "ECS_NUIT": [
+   23,
+   6
+  ],
+  "ECS_JOUR": [
+   10,
+   17
+  ],
+  "ECS_SAISON": 0.2
+ },
+ "annee_typique": 2022,
+ "sources": "voir donnees/SOURCES.md et donnees/JOURNAL_METHODE.md",
+ "sha256": {
+  "annee_2021.bin": "906b21eadd805580b568368d943caf35997e6bb211c8de9089a34089bef2354a",
+  "annee_2022.bin": "d0c9247e05b073c3d6f5195ab6aa3cebcb28bbc87d456e671897a4b2d1e1a5db",
+  "annee_2023.bin": "b165cabdc85b5194412111767858a26b8faeedcd30b8386a994c08f6c9562f86",
+  "annee_2024.bin": "915193720f1f72d71199fa4626100fdb5d69ca0bab7e082d850f1790642710aa",
+  "annee_2025.bin": "e908872fa13d712607413992091c76194ce1e3fc8d0bf14ace897750df9ba312"
+ }
+}

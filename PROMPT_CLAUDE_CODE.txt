@@ -1,0 +1,48 @@
+=== PROMPT DE DÉMARRAGE — à coller tel quel dans Claude Code ===
+(Lancer Claude Code depuis le dossier « Smart Grids\simulateur ». Modèle conseillé : le plus puissant disponible.)
+
+Bonjour. Tu vas fiabiliser et compléter le simulateur web de notre projet Smart Grids (ESIEE Paris, Projet 2
+« Intégration des ENR », Mauges Communauté). La soutenance a lieu le 3 novembre 2026 : tout doit être prêt et
+vérifié ce soir.
+
+1. Commence par lire, dans cet ordre : CLAUDE.md, docs/07_SPRINT_FINAL.md (ton plan de travail),
+   l'annexe de docs/06_DECISIONS.md (valeurs de référence), puis app/index.html en entier.
+   Survole docs/03_SPEC_UI.md et docs/04_DESIGN_SYSTEM.md pour l'intention d'origine.
+
+2. Contexte : app/index.html est la maquette enrichie par Imran (carte Leaflet interactive, graphiques ECharts,
+   indicateurs repliables). Le moteur de calcul qu'elle contient est validé : tu n'y touches pas. Le portage React
+   prévu dans docs/05 est abandonné jusqu'à la soutenance : ne crée ni projet Vite, ni package React.
+
+3. Avant toute modification :
+   a) écris tests/parite_app.mjs comme décrit dans docs/07 §3 tâche 2 et lance-le (il doit afficher 135/135) ;
+   b) prends des captures de référence (1366×768 et 1920×1080) des vues Élu, Démo (5 étapes) et Expert avec
+      Playwright, dans app/captures/avant/.
+
+4. Réalise ensuite les tâches P0 de docs/07 dans l'ordre (1 à 6), puis les P1 (7 à 11), puis les P2 si le temps
+   le permet. Après CHAQUE tâche : relance la parité, reprends les captures concernées, regarde-les toi-même,
+   corrige si besoin, puis fais un commit (git init d'abord si le dossier n'est pas un dépôt).
+
+5. Règles :
+   - ne modifie jamais le bloc « const MOTEUR », ni public/data/, tests/golden.json, reference-js/, app/data.js,
+     ni le dossier ../maquette Imran/ ;
+   - un seul dossier statique app/ qui marche publié sur GitHub Pages (mode principal) ET ouvert par double-clic
+     (secours) : pas de fetch, pas de modules ES, pas de CDN ;
+   - avant de créer un dépôt GitHub ou de pousser quoi que ce soit, demande-moi (compte, nom, visibilité) ;
+   - vocabulaire de la fiche : « taux de couverture (heure par heure) », énergie produite, surplus, déficit,
+     pointe d'injection ; plus de mot « autonomie » ;
+   - chaque chiffre affiché garde son unité et son explication (bouton i) ;
+   - si une valeur affichée ne correspond pas à l'annexe de docs/06_DECISIONS.md, ou si un choix touche aux
+     hypothèses ou au fond, arrête-toi et pose-moi la question au lieu de deviner.
+
+6. Quand les P0 sont faits, montre-moi un récapitulatif : ce qui a changé, les captures avant/après de la vue Démo,
+   le résultat de la parité et du test en double-clic sans réseau. Propose-moi ensuite la mise en ligne
+   sur GitHub Pages (tâche 12 bis). Je validerai avant que tu passes aux P1.
+
+Pose-moi au fur et à mesure les questions qui te semblent essentielles. Commence par l'étape 1 et dis-moi en quelques lignes ce que tu as compris du plan avant de modifier quoi que ce soit.
+
+=== OUTILS DE DESIGN (installés par Noé avant la session) ===
+- Playwright MCP : sers-t'en pour ouvrir l'app, faire les captures et les regarder toi-même après chaque tâche.
+- Skill « frontend-design » (Anthropic) : principes généraux ; en cas de conflit, docs/04_DESIGN_SYSTEM.md gagne.
+- Impeccable : utilise UNIQUEMENT « /impeccable critique », « /impeccable audit » et « /impeccable polish » sur
+  app/index.html, à la fin des P0 puis des P1. N'utilise pas « init », « document » ni « design » : notre charte
+  existe déjà (docs/04). Présente-moi les remarques de critique avant d'appliquer quoi que ce soit.
