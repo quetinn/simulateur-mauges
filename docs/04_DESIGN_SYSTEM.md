@@ -23,7 +23,7 @@ Thème clair (principal, projection). Un thème sombre est fourni pour le confor
 | `--panel` | `#FFFFFF` | `#1A2220` | panneaux, tuiles |
 | `--ink` | `#14222B` | `#E8EEEB` | texte principal |
 | `--ink-2` | `#4A5A63` | `#A9B6B1` | texte secondaire |
-| `--ink-3` | `#6E7C82` | `#7F8C88` | légendes, axes |
+| `--ink-3` | `#5F6D73` (1/11 : était `#6E7C82`, 4,3:1, sous AA) | `#7F8C88` | légendes, axes (≥ 4,5:1 sur `--bg` et `--panel`) |
 | `--line` | `#D6DFDA` | `#2C3633` | filets, grilles (recessifs) |
 | `--accent` | `#1F5F8B` « bleu Loire » | `#5B9BD0` | éléments interactifs, focus, sélection |
 | `--bocage` | `#2F5D3A` | `#7FB08A` | identité (logo, titres de section), jamais pour un état |
