@@ -232,20 +232,7 @@ body:not(.disp-open) #disp .side-h>.label{display:none}
 .poste-ico{background:none;border:0}
 .poste-ico svg{overflow:visible;display:block;cursor:pointer}
 .commune-lbl{background:none;border:0}
-.commune-lbl .cl{display:inline-block;white-space:nowrap;transform:translate(calc(-50% + var(--dx,0px)),calc(-50% + var(--dy,0px)));padding:2px 4px;border-radius:2px;background:var(--panel);font-family:var(--f-body);font-weight:700;font-size:11px;color:var(--ink);pointer-events:none}
-.commune-beaupreau .cl{--dx:45px;--dy:44px}
-.commune-chemille .cl{--dx:50px;--dy:14px}
-.commune-oree .cl{--dx:-28px;--dy:-8px}
-.commune-montrevault .cl{--dx:-55px;--dy:27px}
-.commune-mauges .cl{--dx:38px;--dy:-13px}
-.commune-sevremoine .cl{--dx:-32px;--dy:57px}
-@media(max-width:600px){
-  .commune-beaupreau .cl{--dx:0px}
-  .commune-chemille .cl{--dx:10px}
-  .commune-oree .cl{--dx:20px}
-  .commune-montrevault .cl{--dx:-35px}
-  .commune-mauges .cl{--dx:0px;--dy:-42px}
-}
+.commune-lbl .cl{display:inline-block;white-space:nowrap;transform:translate(-50%,-50%);padding:2px 4px;border-radius:2px;background:var(--panel);font-family:var(--f-body);font-weight:700;font-size:11px;color:var(--ink);pointer-events:none}
 .map-note{position:absolute;left:8px;bottom:22px;z-index:800;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:3px 8px;font-size:12px;color:var(--ink-2)}
 
 .tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--panel);font-size:12.5px;padding:7px 9px;border-radius:3px;z-index:20;font-variant-numeric:tabular-nums;line-height:1.4;max-width:260px}
@@ -945,7 +932,48 @@ function surfaceKm2(f) {
   let km2 = 0; for (const poly of f.geometry.coordinates) km2 += ring(poly[0]) - poly.slice(1).reduce((t, h) => t + ring(h), 0);
   return (f.properties._km2 = km2);
 }
-let densRange = [0, 0];
+let densRange = [0, 0], etiquettes = [], obstacles = [];
+// Point intérieur d'une commune (« pôle d'inaccessibilité » approché) : point du plus grand polygone le plus éloigné
+// de ses bords, recherché sur une grille puis affiné. Plus sûr que le centroïde pour les communes de forme irrégulière.
+const dansAnneau = (x, y, r) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+function pointInterieur(f) {
+  if (f.properties._pi) return f.properties._pi;
+  const polys = f.geometry.coordinates, aire = r => Math.abs(r.reduce((a, p, i) => { const q = r[(i + 1) % r.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0));
+  const poly = polys.reduce((a, b) => aire(b[0]) > aire(a[0]) ? b : a), k = Math.cos(poly[0][0][1] * Math.PI / 180);
+  const dist = (x, y) => { if (!dansAnneau(x, y, poly[0]) || poly.slice(1).some(h => dansAnneau(x, y, h))) return -1; let m = Infinity;
+    for (const r of poly) for (let i = 0; i < r.length - 1; i++) { const [ax, ay] = r[i], [bx, by] = r[i + 1], dx = (bx - ax) * k, dy = by - ay, l = dx * dx + dy * dy;
+      const t = l ? Math.max(0, Math.min(1, ((x - ax) * k * dx + (y - ay) * dy) / l)) : 0, ex = (x - ax) * k - t * dx, ey = y - ay - t * dy; m = Math.min(m, ex * ex + ey * ey); } return m; };
+  const xs = poly[0].map(p => p[0]), ys = poly[0].map(p => p[1]);
+  let best = [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2], bd = -1, pas = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) / 24;
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x += pas) for (let y = Math.min(...ys); y <= Math.max(...ys); y += pas) { const d = dist(x, y); if (d > bd) { bd = d; best = [x, y]; } }
+  for (let it = 0; it < 4; it++) { pas /= 3; const [bx, by] = best; for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) { const d = dist(bx + i * pas, by + j * pas); if (d > bd) { bd = d; best = [bx + i * pas, by + j * pas]; } } }
+  return (f.properties._pi = best);
+}
+// Place chaque étiquette de commune près de son point intérieur, sans chevaucher les postes (cercle + plaque)
+// ni les autres étiquettes : positions candidates en spirale autour du point ; le centre reste toujours dans la commune.
+const mesure = document.createElement("canvas").getContext("2d");
+function placerEtiquettes() {
+  if (!mapL || !etiquettes.length || !$("c-carte").offsetWidth) return;
+  const proj = document.body.classList.contains("projection"), fs = proj ? 13 : 11, fsd = proj ? 12.5 : 10.5;
+  const boites = showPostes ? obstacles.flatMap(o => { const p = mapL.latLngToContainerPoint(o.ll), x = p.x - o.cx0, y = p.y - o.cy0;
+    return [[p.x - o.r, p.y - o.r, p.x + o.r, p.y + o.r], [x + o.x0, y + o.cy0 - 9, x + o.x0 + o.w, y + o.cy0 + 7]]; }) : [];
+  const inter = (a, b) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const cands = [[0, 0]]; for (let R = 8; R <= 96; R += 8) for (let k = 0; k < 24; k++) { const a = k * Math.PI / 12; cands.push([R * Math.cos(a), R * Math.sin(a) * .8]); }
+  for (const e of etiquettes) {
+    mesure.font = `700 ${fs}px ${getComputedStyle(document.body).getPropertyValue("--f-body")}`;
+    let w = mesure.measureText(e.nom).width + 10, h = fs * 1.45 + 6;
+    if (e.lignes > 1) { mesure.font = `400 ${fsd}px Atkinson Hyperlegible`; w = Math.max(w, mesure.measureText("0,00 MW/km²").width + 10); h += fsd * 1.45; }
+    const c0 = mapL.latLngToContainerPoint(e.ancre); let meilleur = null, cout = Infinity;
+    for (const [dx, dy] of cands) {
+      const x = c0.x + dx, y = c0.y + dy, b = [x - w / 2, y - h / 2, x + w / 2, y + h / 2];
+      const ll = mapL.containerPointToLatLng([x, y]), dedans = e.f.geometry.coordinates.some(pg => dansAnneau(ll.lng, ll.lat, pg[0]));
+      const c = boites.reduce((s, o) => s + inter(b, o), 0) * 10 + (dedans ? 0 : 1e7) + Math.hypot(dx, dy); // l'étiquette reste dans sa commune
+      if (c < cout) { cout = c; meilleur = [x, y, b]; } if (c <= Math.hypot(dx, dy) + 1e-9) break;
+    }
+    boites.push(meilleur[2]);
+    e.m.setLatLng(mapL.containerPointToLatLng([meilleur[0], meilleur[1]]));
+  }
+}
 function fitMap() { const el = $("c-carte"); if (mapFit || !mapL || !el.offsetWidth) return; mapL.invalidateSize();
   const pts = []; for (const f of GEO.communes.features) for (const poly of f.geometry.coordinates) for (const [lo, la] of poly[0]) pts.push([la, lo]); for (const p of GEO.postes) pts.push([p.lat, p.lon]);
   mapL.fitBounds(L.latLngBounds(pts), { padding: [24, 24] }); mapFit = true; }
@@ -976,7 +1004,7 @@ function renderCarte() {
       "Plan (Esri rues)": esri("World_Street_Map", 19),
       "Sans fond de carte": L.layerGroup()
     };
-    const defaut = fonds["Relief (Esri topo)"], sansFond = fonds["Sans fond de carte"], horsLigne = navigator.onLine === false;
+    const defaut = fonds["Plan clair (Esri gris clair)"], sansFond = fonds["Sans fond de carte"], horsLigne = navigator.onLine === false;
     (horsLigne ? sansFond : defaut).addTo(mapL); el.classList.toggle("map-nobase", horsLigne);
     L.control.layers(fonds, null, { collapsed: true, position: "topright" }).addTo(mapL);
     // « Sans fond » : fond uni de panneau ; les contours et les postes suffisent à la lecture.
@@ -992,7 +1020,8 @@ function renderCarte() {
         mapL.removeLayer(fond); sansFond.addTo(mapL); el.classList.add("map-nobase"); noter(); });
     }
     mapCom = L.layerGroup().addTo(mapL); mapPostes = L.layerGroup().addTo(mapL);
-    if (window.ResizeObserver) new ResizeObserver(() => { mapL.invalidateSize(); mapFit = false; fitMap(); }).observe(el);
+    mapL.on("zoomend", placerEtiquettes);
+    if (window.ResizeObserver) new ResizeObserver(() => { mapL.invalidateSize(); mapFit = false; fitMap(); placerEtiquettes(); }).observe(el);
     setTimeout(() => mapL.invalidateSize(), 200);
   }
 
@@ -1000,30 +1029,24 @@ function renderCarte() {
   const maxMW = Math.max(...feats.map(f => f.properties.pv_MW * P.m_pv + f.properties.eol_MW * P.m_eol));
   const dens = f => (f.properties.pv_MW * P.m_pv + f.properties.eol_MW * P.m_eol) / surfaceKm2(f), dArr = feats.map(dens), maxD = Math.max(...dArr);
   densRange = [Math.min(...dArr), maxD];
-  const labelClasses = {
-    "Beaupréau-en-Mauges": "beaupreau",
-    "Chemillé-en-Anjou": "chemille",
-    "Orée d'Anjou": "oree",
-    "Montrevault-sur-Èvre": "montrevault",
-    "Mauges-sur-Loire": "mauges",
-    "Sèvremoine": "sevremoine"
-  };
   const moveTip = (e, html) => { tip.hidden = false; tip.style.left = (e.clientX + 14) + "px"; tip.style.top = (e.clientY - 10) + "px"; if (html) tip.innerHTML = html; };
 
   // Communes : remplissage proportionnel à la puissance ENR du scénario, nom affiché
-  mapCom.clearLayers();
+  mapCom.clearLayers(); etiquettes = [];
   for (const f of feats) {
     const pr = f.properties, mw = pr.pv_MW * P.m_pv + pr.eol_MW * P.m_eol;
     const km2 = surfaceKm2(f), d = mw / km2, d0 = (pr.pv_MW + pr.eol_MW) / km2;
     const poly = L.geoJSON(f, { style: showDens ? { color: cSeuil, weight: 1.4, fillColor: cSeuil, fillOpacity: 0.06 + 0.62 * d / maxD } : { color: cBocage, weight: 1.4, fillColor: cBocage, fillOpacity: 0.08 + 0.42 * mw / maxMW } }).addTo(mapCom);
     const html = `<b>${pr.nom}</b><br>${pr.population.toLocaleString("fr-FR")} habitants · ${fr(km2, 0)} km²<br>parc actuel : ${fr(pr.pv_MW, 1)} MW PV · ${fr(pr.eol_MW, 1)} MW éolien<br>scénario : ${fr(mw, 1)} MW<br>densité de puissance : ${fr(d0, 2)} → <b>${fr(d, 2)} MW/km²</b>`;
     poly.on("mousemove", e => moveTip(e.originalEvent, html)); poly.on("mouseout", () => { tip.hidden = true; });
-    const ring = f.geometry.coordinates[0][0], cx = ring.reduce((a, p) => a + p[0], 0) / ring.length, cy = ring.reduce((a, p) => a + p[1], 0) / ring.length;
-    L.marker([cy, cx], { interactive: false, keyboard: false, icon: L.divIcon({ className: `commune-lbl commune-${labelClasses[pr.nom] || "default"}`, html: `<span class="cl">${pr.nom}${showDens ? `<span class="cd">${fr(d, 2)} MW/km²</span>` : ""}</span>`, iconSize: [0, 0] }) }).addTo(mapCom);
+    const [lo, la] = pointInterieur(f);
+    const court = pr.nom.replace(/-(en-Mauges|en-Anjou|sur-Èvre)$/, ""); // nom d'usage sur la carte ; nom complet dans l'info-bulle
+    etiquettes.push({ f, ancre: [la, lo], lignes: showDens ? 2 : 1, nom: court,
+      m: L.marker([la, lo], { interactive: false, keyboard: false, zIndexOffset: 2000, icon: L.divIcon({ className: "commune-lbl", html: `<span class="cl">${court}${showDens ? `<span class="cd">${fr(d, 2)} MW/km²</span>` : ""}</span>`, iconSize: [0, 0] }) }).addTo(mapCom) });
   }
 
   // Postes sources : taille = MW raccordés, couleur = taux de remplissage S3REnR, hachuré si dépassé
-  mapPostes.clearLayers();
+  mapPostes.clearLayers(); obstacles = [];
   const aj = ajoutsPostes();
   for (const p of aj) {
     const mw = p.pv_MW * P.m_pv + p.eol_MW * P.m_eol, r = 5 + Math.sqrt(mw) * 1.4, ko = p.remplissage > 1.0001;
@@ -1035,6 +1058,7 @@ function renderCarte() {
       <rect x="${cx0 + r + 3}" y="${cy0 - 9}" width="${w}" height="16" fill="${cPanel}" stroke="${cInk}" rx="2"/>
       <text x="${cx0 + r + 7}" y="${cy0 + 3}" style="fill:${cInk};font-size:11px;font-family:var(--f-body)">${p.code}</text>
       <circle cx="${cx0}" cy="${cy0}" r="${r + 8}" fill="transparent"/></svg>`;
+    obstacles.push({ ll: [p.lat, p.lon], cx0, cy0, r: r + 2, x0: cx0 + r + 3, w });
     const m = L.marker([p.lat, p.lon], { zIndexOffset: ko ? 1000 : 0, keyboard: false, icon: L.divIcon({ className: "poste-ico", html: svg, iconSize: [Wt, Ht], iconAnchor: [cx0, cy0] }) }).addTo(mapPostes);
     const html = `<b>${p.nom}</b> (${p.code})<br>parc des Mauges : ${fr(p.pv_MW, 1)} MW PV · ${fr(p.eol_MW, 1)} MW éolien<br>capacité réservée S3REnR : ${fr(p.capacite_reservee_MW, 1)} MW<br>restant à affecter : ${fr(p.restant_MW, 1)} MW (${p.taux_remplissage} rempli)<br>ajout du scénario : ${fr(p.ajout, 1)} MW${p.depasse > 0.05 ? ` → <b>dépassement ${fr(p.depasse, 1)} MW</b>` : ""}`;
     const bind = () => { const node = m.getElement(); if (!node || node._bound) return; node._bound = true;   // l'élément n'existe que lorsque la couche est affichée
@@ -1042,7 +1066,7 @@ function renderCarte() {
     m.on("add", bind); bind();
   }
 
-  fitMap(); applyPostes();
+  fitMap(); applyPostes(); placerEtiquettes();
 }
 // ---- vue expert
 function renderExpert() {

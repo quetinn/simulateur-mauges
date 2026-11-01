@@ -1,0 +1,7 @@
+Captures « apres-t5-reseau » — 2026-11-01T21:32:45.613Z — réseau ouvert
+1366x768 : 18 requête(s) http(s) passées
+  server.arcgisonline.com
+1366x768 : 0 erreur(s) console
+1920x1080 : 18 requête(s) http(s) passées
+  server.arcgisonline.com
+1920x1080 : 0 erreur(s) console
