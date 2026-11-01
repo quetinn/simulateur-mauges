@@ -676,34 +676,40 @@ function renderKpis(r, all) {
     const sans = META.annees.map(a => sim({ ...P, bat_pilotage: "aucune" }, a));
     const gain = all.reduce((s, x, i) => s + x.valeur_annuelle_EUR - sans[i].valeur_annuelle_EUR, 0) / all.length;
     const om = r.om_annuel_EUR, van = (gain - om) * r.facteur_annuite - capex;
-    cout = `<div class="v">${fr(capex / 1e6, 0)}<span class="u">M€</span></div><div class="r">Entretien ${fr(om / 1e6, 1)} M€/an, gain estimé ${fr(gain / 1e6, 1)} M€/an et VAN ${fr(van / 1e6, 0)} M€ sur ${P.duree_analyse} ans.</div>`;
+    const pts = (r.couverture_horaire - sans[META.annees.indexOf(P.annee)].couverture_horaire) * 100;
+    cout = `<div class="v">${fr(capex / 1e6, 0)}<span class="u">M€</span></div><div class="r">${pts > 0.05 ? `<b>${fr(capex / 1e6 / pts, 0)} M€ par point de couverture</b> gagné (+${fr(pts)} pt). ` : ""}Entretien ${fr(om / 1e6, 1)} M€/an, gain estimé ${fr(gain / 1e6, 1)} M€/an et VAN ${fr(van / 1e6, 0)} M€ sur ${P.duree_analyse} ans.</div>`;
   }
+  // Repère « parc actuel » : solaire et éolien ×1, sans batterie, ballons ni plafond, même année et même horizon
+  // (les hypothèses VE de l'horizon 2035 gardent leurs valeurs par défaut).
+  const parc = sim({ ...P, m_pv: 1, m_eol: 1, bat_pilotage: "aucune", ecs_deplace: 0, pv_plafond: 1, ve_pilote: DEF.ve_pilote, ve_non_pilote: DEF.ve_non_pilote }, P.annee);
   const gwh = v => fr(v / 1000, v / 1000 < 10 ? 1 : 0);
-  const sg = v => (v < 0 ? "−" : "+") + gwh(Math.abs(v));
   $("kpis-off").innerHTML = "";
   $("kpis").innerHTML = `
    <div class="kpi" id="k-prod">${kHead("k-prod", "Énergie produite")}<div class="v">${gwh(r.production_MWh)}<span class="u">GWh/an</span></div>
      <div class="r">Soit <b>${fr(r.couverture * 100, 0)} %</b> de la consommation annuelle.</div></div>
-   <div class="kpi" id="k-auto">${kHead("k-auto", "Taux de couverture")}<div class="v">${fr(r.couverture_horaire * 100)}<span class="u">%</span></div>
-     <div class="r">Part de la consommation couverte heure par heure ; météo 2021-2025 : <b>${rng(all, "couverture_horaire")} %</b>.</div></div>
-   <div class="kpi" id="k-solde">${kHead("k-solde", "Surplus / déficit")}<div class="v">${sg(r.surplus_exporte_MWh - r.deficit_importe_MWh)}<span class="u">GWh/an</span></div>
-     <div class="r"><b>${gwh(r.surplus_exporte_MWh)}</b> envoyés au réseau et <b>${gwh(r.deficit_importe_MWh)}</b> achetés.</div></div>
+   <div class="kpi" id="k-auto">${kHead("k-auto", "Taux de couverture (heure par heure)")}<div class="v">${fr(r.couverture_horaire * 100)}<span class="u">%</span></div>
+     <div class="r">Parc actuel : <b>${fr(parc.couverture_horaire * 100)} %</b>. Météo 2021-2025 : <b>${rng(all, "couverture_horaire")} %</b>.</div></div>
+   <div class="kpi" id="k-surplus">${kHead("k-surplus", "Surplus envoyé au réseau")}<div class="v">${gwh(r.surplus_exporte_MWh)}<span class="u">GWh/an</span></div>
+     <div class="r">Dont <b>${gwh(r.ecretement_dynamique_MWh)} GWh</b> écrêtés.${r.ecretement_statique_MWh > 0 ? `<br>+ <b>${gwh(r.ecretement_statique_MWh)} GWh</b> non injectés (plafond).` : ""}</div></div>
+   <div class="kpi" id="k-deficit">${kHead("k-deficit", "Déficit acheté au réseau")}<div class="v">${gwh(r.deficit_importe_MWh)}<span class="u">GWh/an</span></div>
+     <div class="r">Soit <b>${fr(r.deficit_importe_MWh / r.consommation_MWh * 100)} %</b> de la consommation achetée au réseau.</div></div>
    <div class="kpi" id="k-ecr">${kHead("k-ecr", "Énergie perdue (écrêtement)")}<div class="v">${fr(ecr)}<span class="u">%</span></div>
      <span class="pill ${st[0]}">${st[1]}</span>${gauge}</div>
    <div class="kpi" id="k-vig">${kHead("k-vig", "Heures de vigilance réseau")}<div class="v">${fr(r.heures_vigilance, 0)}<span class="u">h/an</span></div>
      <div class="r">Heures au-dessus de 120 % de la consommation ; météo 2021-2025 : <b>${rng(all, "heures_vigilance", 1, 0)} h</b>.</div></div>
-   <div class="kpi" id="k-pointes">${kHead("k-pointes", "Pointes d'injection")}<div class="v">${fr(r.pointe_injection_MW, 0)}<span class="u">MW ↑</span></div>
+   <div class="kpi" id="k-pointes">${kHead("k-pointes", "Pointe d'injection")}<div class="v">${fr(r.pointe_injection_MW, 0)}<span class="u">MW ↑</span></div>
      <div class="r">Soutirage maximal au réseau : <b>${fr(r.pointe_soutirage_MW, 0)} MW</b>.</div></div>
    <div class="kpi" id="k-cout">${kHead("k-cout", "Investissement batterie")}${cout}</div>`;
 }
 const INFO = {
-  "k-auto": "<b>Part de la consommation couverte, heure par heure,</b> par la production locale solaire et éolienne (batterie comprise). 100 % signifierait que chaque heure de l'année est couverte localement. Un taux bas malgré une forte production annuelle indique un décalage entre les heures de production et celles de consommation. La plage 2021-2025 montre l'effet de la météo.",
+  "k-auto": "<b>Part de la consommation couverte, heure par heure,</b> par la production locale solaire et éolienne (batterie comprise), en %. 100 % signifierait que chaque heure de l'année est couverte localement. Un taux bas malgré une forte production annuelle indique un décalage entre les heures de production et celles de consommation. « Parc actuel » : même année et même horizon, solaire et éolien d'aujourd'hui, sans batterie, ballons ni plafond. La plage 2021-2025 montre l'effet de la météo. Source : moteur du simulateur, données ODRÉ, Enedis, RTE.",
+  "k-surplus": "<b>Énergie produite en excès et envoyée au réseau</b> sur l'année, en GWh : ce que la consommation locale (et la batterie) n'absorbe pas. « Dont écrêtés » : la part au-dessus du seuil de vigilance (120 % de la consommation) qu'il faudrait couper. Si le plafond d'injection solaire est activé, l'énergie bridée aux onduleurs n'est jamais injectée : elle est indiquée à part.",
+  "k-deficit": "<b>Énergie achetée au réseau</b> sur l'année, en GWh, quand la production locale (et la batterie) ne suffit pas. Rapportée à la consommation annuelle, c'est la part de la consommation qui dépend du réseau national : le complément exact du taux de couverture.",
   "k-prod": "<b>Production annuelle de solaire et d'éolien</b> du scénario, en GWh. Le pourcentage compare cette énergie à la consommation annuelle : 100 % = autant produit que consommé sur l'année, mais pas aux mêmes heures (voir le taux de couverture).",
-  "k-solde": "<b>Bilan annuel avec le réseau : surplus (+) moins déficit (−).</b> Le surplus est l'énergie produite en excès et envoyée au réseau (écrêtement compris) ; le déficit est l'énergie achetée au réseau quand la production ne suffit pas. Un signe + indique plus d'envois que d'achats sur l'année ; les deux montants sont détaillés en dessous.",
   "k-ecr": "<b>Part de la production brute perdue par écrêtement</b> : plafonnement des onduleurs et dépassement du seuil de vigilance (120 % de la consommation). La limite de 5 % par année météo sert de repère : au-delà, le scénario n'est plus conforme. Leviers : plus d'éolien, ballons d'eau chaude, batterie.",
   "k-vig": "<b>Nombre d'heures par an où la production dépasse 120 % de la consommation locale.</b> Plus il est élevé, plus le réseau est sollicité en injection et plus le risque d'écrêtement augmente.",
   "k-pointes": "<b>Puissance maximale injectée sur le réseau (↑)</b> sur l'année, avec l'appel maximal depuis le réseau (↓) quand la production ne suffit pas. Ces pointes dimensionnent les ouvrages de raccordement : à comparer à la capacité restante des postes sources sur la carte.",
-  "k-cout": "<b>Coût d'investissement de la batterie</b>, son entretien annuel et le gain annuel qu'elle apporte. La VAN indique si ce gain compense les coûts sur la durée d'analyse : négative, la batterie ne se rembourse pas."
+  "k-cout": "<b>Coût d'investissement de la batterie</b> (CAPEX, en M€), son entretien annuel et le gain annuel qu'elle apporte. « M€ par point de couverture » : CAPEX divisé par les points de taux de couverture gagnés par rapport au même scénario sans batterie. La VAN indique si ce gain compense les coûts sur la durée d'analyse : négative, la batterie ne se rembourse pas. Sources : NREL ATB 2025 (coût, entretien), tarif réglementé 0,194 €/kWh, CRE."
 };
 const EYE_PATH = '<path d="M1 8s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/>';
 const kHead = (id, label) => `<div class="k-head"><span class="label">${label}</span><span class="k-tools">
@@ -839,7 +845,7 @@ const BLOCS = [
   ["Vue expert", [["b-heures", "Deux semaines heure par heure"], ["b-hyp", "Toutes les hypothèses"], ["b-annees", "Indicateurs 2021-2025"]]]
 ];
 const MENU_IDS = BLOCS.flatMap(g => g[1].map(x => x[0]));
-const KPI_IDS = ["k-prod", "k-auto", "k-solde", "k-ecr", "k-vig", "k-pointes", "k-cout"];
+const KPI_IDS = ["k-prod", "k-auto", "k-surplus", "k-deficit","k-ecr", "k-vig", "k-pointes", "k-cout"];
 const ALL_IDS = [...KPI_IDS, ...MENU_IDS];
 let offSet = new Set(), showPostes = true, showDens = false, sideOpen = !matchMedia("(max-width:900px)").matches, dispOpen = false, infoOpen = null;
 try { const o = JSON.parse(localStorage.getItem("mauges.affichage") || "{}"); offSet = new Set((o.off || []).filter(id => ALL_IDS.includes(id))); if (o.postes === false) showPostes = false; if (o.dens === true) showDens = true; if (typeof o.side === "boolean") sideOpen = o.side; if (o.disp === true) dispOpen = true; } catch (e) { /* stockage indisponible : réglages par défaut */ }
