@@ -115,6 +115,9 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;background:var(--pane
 .seg button{flex:1;border:0;background:var(--panel);padding:5px 6px;cursor:pointer;font-size:13px}
 .seg button+button{border-left:1px solid var(--line)}
 .seg button[aria-pressed="true"]{background:var(--accent-weak);color:var(--accent);font-weight:700}
+.seg-prix{margin-top:4px;align-self:stretch;max-width:260px}
+.seg-prix button{white-space:nowrap;padding-inline:8px;font-size:12.5px}
+body.projection .seg-prix button{font-size:15px}
 .ctl-row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
 .ctl-row .seg{min-width:0}
 .ctl-row .seg button{white-space:nowrap;padding-inline:10px}
@@ -619,6 +622,11 @@ const $ = (s) => document.getElementById(s);
 const fr = (x, d = 1) => (x == null || !isFinite(x)) ? "–" : x.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }).replace("-", "−"); // vrai signe moins
 const DEF = Object.fromEntries(Object.entries(META.parametres).map(([k, v]) => [k, v.defaut]));
 const K = META.constantes;
+// Prix de l'électricité évitée : tarif de détail (valeur par défaut) ou prix de gros, lu dans la source du paramètre
+// (« vue prix de gros : spot moyen 2025 0,061 (RTE) ») pour n'écrire aucune hypothèse en dur.
+const PRIX = { detail: DEF.prix_achat, gros: (m => m ? +m[1].replace(",", ".") : null)(/prix de gros[^;]*?(\d+,\d+)/i.exec(META.parametres.prix_achat.source)) };
+const segPrix = () => PRIX.gros == null ? "" : `<div class="seg seg-prix" role="group" aria-label="Prix de l'électricité évitée">${[["detail", "Détail"], ["gros", "Gros"]].map(([k, t]) => `<button type="button" data-prix="${k}" aria-pressed="${Math.abs(P.prix_achat - PRIX[k]) < 1e-9}" title="${t === "Détail" ? "Tarif réglementé" : "Prix de gros (spot)"} : ${fr(PRIX[k], 3)} €/kWh">${t} ${fr(PRIX[k], 3)}</button>`).join("")}</div>`;
+document.addEventListener("click", e => { const b = e.target.closest("[data-prix]"); if (!b) return; P.prix_achat = PRIX[b.dataset.prix]; syncControls(); if (vue === "expert") syncForm(); render(); });
 // ---- données : base64 → ArrayBuffer → Annee
 const ANS = {};
 for (const a of META.annees) {
@@ -727,7 +735,8 @@ function renderKpis(r, all, eco) {
   let cout = `<div class="v">0<span class="u">M€</span></div><div class="r">Aucune batterie dans ce scénario.</div>`;
   if (eco) {
     const { capex, gain, om, van, pts } = eco;
-    cout = `<div class="v">${fr(capex / 1e6, 0)}<span class="u">M€</span></div><div class="r">${pts > 0.05 ? `<b>${fr(capex / 1e6 / pts, 0)} M€ par point de couverture</b> gagné (+${fr(pts)} pt). ` : ""}Entretien ${fr(om / 1e6, 1)} M€/an, gain estimé ${fr(gain / 1e6, 1)} M€/an et VAN ${fr(van / 1e6, 0)} M€ sur ${P.duree_analyse} ans.</div>`;
+    cout = `<div class="v">${fr(capex / 1e6, 0)}<span class="u">M€</span></div><div class="r">${pts > 0.05 ? `<b>${fr(capex / 1e6 / pts, 0)} M€ par point de couverture</b> gagné (+${fr(pts)} pt). ` : ""}Entretien ${fr(om / 1e6, 1)} M€/an, gain estimé ${fr(gain / 1e6, 1)} M€/an et VAN ${fr(van / 1e6, 0)} M€ sur ${P.duree_analyse} ans.</div>
+      <span class="r">Électricité évitée valorisée au prix (€/kWh) :</span>${segPrix()}`;
   }
   // Repère « parc actuel » : solaire et éolien ×1, sans batterie, ballons ni plafond, même année et même horizon
   // (les hypothèses VE de l'horizon 2035 gardent leurs valeurs par défaut).
@@ -759,7 +768,7 @@ const INFO = {
   "k-ecr": "<b>Part de la production brute perdue par écrêtement</b> : plafonnement des onduleurs et dépassement du seuil de vigilance (120 % de la consommation). La limite de 5 % par année météo sert de repère : au-delà, le scénario n'est plus conforme. Leviers : plus d'éolien, ballons d'eau chaude, batterie.",
   "k-vig": "<b>Nombre d'heures par an où la production dépasse 120 % de la consommation locale.</b> Plus il est élevé, plus le réseau est sollicité en injection et plus le risque d'écrêtement augmente.",
   "k-pointes": "<b>Puissance maximale injectée sur le réseau (↑)</b> sur l'année, avec l'appel maximal depuis le réseau (↓) quand la production ne suffit pas. Ces pointes dimensionnent les ouvrages de raccordement : à comparer à la capacité restante des postes sources sur la carte.",
-  "k-cout": "<b>Coût d'investissement de la batterie</b> (CAPEX, en M€), son entretien annuel et le gain annuel qu'elle apporte. « M€ par point de couverture » : CAPEX divisé par les points de taux de couverture gagnés par rapport au même scénario sans batterie. La VAN indique si ce gain compense les coûts sur la durée d'analyse : négative, la batterie ne se rembourse pas. Sources : NREL ATB 2025 (coût, entretien), tarif réglementé 0,194 €/kWh, CRE."
+  "k-cout": "<b>Coût d'investissement de la batterie</b> (CAPEX, en M€), son entretien annuel et le gain annuel qu'elle apporte. « M€ par point de couverture » : CAPEX divisé par les points de taux de couverture gagnés par rapport au même scénario sans batterie. La VAN indique si ce gain compense les coûts sur la durée d'analyse : négative, la batterie ne se rembourse pas. Bascule « Détail / Gros » : l'électricité que la batterie évite d'acheter est valorisée au tarif réglementé (vue la plus favorable à la batterie) ou au prix de gros. Sources : NREL ATB 2025 (coût, entretien), tarif réglementé 0,194 €/kWh, CRE."
 };
 const EYE_PATH = '<path d="M1 8s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/>';
 const kHead = (id, label) => `<div class="k-head"><span class="label">${label}</span><span class="k-tools">
@@ -1236,10 +1245,12 @@ function buildForm() {
     h += `<div class="pf"><label for="pf-${k}">${v.libelle}</label><div class="in">${ctrl}<span class="u">${v.unite || ""}</span></div><small>${v.source}</small></div>`;
   }
   $("pform").innerHTML = h;
+  $("pf-prix_achat").closest(".pf").insertAdjacentHTML("beforeend", `<div id="pf-prix-seg"></div>`);
   for (const k of Object.keys(META.parametres)) { const el = $("pf-" + k); if (!el) continue;
     el.onchange = () => { const v = META.parametres[k]; let x = v.choix ? el.value : Math.min(v.max, Math.max(v.min, +el.value)); P[k] = x; presetActif = null; syncControls(); syncForm(); render(); }; }
 }
-function syncForm() { for (const [k, v] of Object.entries(META.parametres)) { const el = $("pf-" + k); if (!el) continue; el.value = P[k]; el.classList.toggle("mod", P[k] !== v.defaut); } }
+function syncForm() { for (const [k, v] of Object.entries(META.parametres)) { const el = $("pf-" + k); if (!el) continue; el.value = P[k]; el.classList.toggle("mod", P[k] !== v.defaut); }
+  $("pf-prix-seg").innerHTML = segPrix(); }
 $("reset").onclick = () => appliquerPreset("A");
 $("semaine").oninput = () => renderExpert();
 // ---- vues
