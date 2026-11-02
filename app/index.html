@@ -63,6 +63,9 @@ body{padding-bottom:76px}
 body.demo-on{padding-bottom:40vh;font-size:17px}
 body.demo-on .bottom-controls{display:none!important}
 body.demo-on #b-resume,body.demo-on #b-kpis{display:none}
+body.demo-on .v-suite{display:none}
+body.demo-carte #b-verdict{display:none}
+body.demo-carte .map{height:max(260px,calc(100vh - 500px))}
 body.demo-on .map{height:clamp(280px,calc(100vh - 400px),440px)}
 @media(max-width:900px){header{grid-template-columns:minmax(0,1fr) auto;gap:12px}
   .brand{grid-column:1/-1}
@@ -278,7 +281,7 @@ body:not(.demo-on) .demo-only{display:none!important}
 .ds-fig{padding:16px 20px 18px;border-right:1px solid var(--line-2);display:flex;flex-direction:column;gap:6px;min-width:0}
 .ds-fig:last-child{border-right:0}
 .ds-fig .v{font-family:var(--f-display);font-stretch:87.5%;font-weight:700;font-size:clamp(44px,4.4vw,64px);line-height:1;font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:.12em}
-.ds-fig .d{font-family:var(--f-mono);font-size:16px;font-weight:500;color:var(--ink)}
+.ds-fig .d{font-size:16px;font-weight:700;color:var(--ink)}
 .ds-fig .r{font-size:15px;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .ds-fig .pill{font-size:15px}
 @media (max-width:900px){.ds-bar{grid-template-columns:minmax(0,1fr) auto}.ds-bar>div:nth-child(2){grid-column:1/-1;grid-row:2}}
@@ -854,7 +857,7 @@ function renderVerdict(r, all, eco) {
   if (!okAll) t.push(P.bat_pilotage === "aucune" ? "Leviers : davantage d'éolien plutôt que de solaire, ballons d'eau chaude à midi, ou une batterie." : "Agrandir la batterie ou réduire le solaire.");
   if (ajout > 0.5) t.push(sat.length ? `${fr(ajout, 0)} MW à raccorder : ${liste(sat)} ${sat.length > 1 ? "seraient saturés" : "serait saturé"} si l'on étendait le parc existant à l'identique ; orienter les projets vers ${liste(libres)} (${fr(restLoc, 0)} MW encore disponibles sur les postes du territoire).` : `${fr(ajout, 0)} MW à raccorder, compatibles avec les capacités restantes des postes.`);
   $("verdict").className = "panel verdict " + cls;
-  $("verdict").innerHTML = `<span class="ic" aria-hidden="true">${ic}</span><p>${t.join(" ")}</p>`;
+  $("verdict").innerHTML = `<span class="ic" aria-hidden="true">${ic}</span><p>${t.map((x, i) => i && !x.startsWith("Mais la batterie") ? `<span class="v-suite">${x}</span>` : x).join(" ")}</p>`; // en Démo : constat + rentabilité seulement
 }
 // ---- graphiques (Apache ECharts)
 const CH = {}, SEL = {};
@@ -1383,8 +1386,10 @@ function setVue(v) {
   document.body.classList.toggle("demo-on", v === "demo");
   const projOn = document.body.classList.contains("projection");
   if (v === "demo" && moy) { moy = false; P.annee = META.annee_typique; syncControls(); }
-  if (v === "demo") { demoStep = 0; if (!projOn) { projAuto = true; setProjection(true); } else demoGo(); }
-  else { clearHl(); if (projAuto) { projAuto = false; setProjection(false); } }
+  if (v === "demo") { if (oriAvantDemo === null) oriAvantDemo = showOriente; demoStep = 0; if (!projOn) { projAuto = true; setProjection(true); } else demoGo(); }
+  else { clearHl(); document.body.classList.remove("demo-carte");
+    if (oriAvantDemo !== null) { showOriente = oriAvantDemo; oriAvantDemo = null; $("ori_on").checked = showOriente; if (mapL && lastR) renderCarte(); }
+    if (projAuto) { projAuto = false; setProjection(false); } }
   if (v === "expert") { syncForm(); renderExpert(); }
 }
 for (const name of ["elu", "demo", "expert"]) for (const id of [`t-${name}`, `tb-${name}`]) $(id).onclick = () => setVue(name);
@@ -1392,29 +1397,31 @@ for (const name of ["elu", "demo", "expert"]) for (const id of [`t-${name}`, `tb
 if (window.IntersectionObserver) new IntersectionObserver(([e]) => { const b = $("bottom-controls"), voir = !e.isIntersecting; b.hidden = !voir; b.inert = !voir; }).observe(document.querySelector("header"));
 // ---- démo
 const fmt = (x, d = 1) => fr(x, d);
+let oriAvantDemo = null;
 const DEMO = [
-  { p: "A", h: "Aujourd'hui", t: r => `${fmt(K.Ppv_A + K.Peol_A, 0)} MW de solaire et d'éolien couvrent ${fmt(r.couverture_horaire * 100, 0)} % de la consommation, heure par heure.`,
+  { p: "A", h: "Aujourd'hui", t: r => `${fmt(K.Ppv_A + K.Peol_A, 0)} MW de solaire et d'éolien couvrent ${fmt(r.couverture_horaire * 100)} % de la consommation, heure par heure.`,
     figs: r => [figCouv(r, null, `Parc actuel : ${fmt(K.Ppv_A, 0)} MW de solaire et ${fmt(K.Peol_A, 0)} MW d'éolien.`),
       { l: "Énergie produite", v: fmt(r.production_MWh / 1000, 0), u: "GWh/an", r: `Soit ${fmt(r.couverture * 100, 0)} % de la consommation de l'année, mais pas aux mêmes heures.` }] },
-  { p: "B", h: "Doubler le solaire", t: r => `Le taux de couverture monte à ${fmt(r.couverture_horaire * 100, 0)} %, mais ${fmt(r.ecretement_part * 100)} % de la production serait perdue : au-delà de la limite de 5 %.`,
+  { p: "B", saison: "ete", h: "Doubler le solaire", t: r => `Le taux de couverture monte à ${fmt(r.couverture_horaire * 100)} %, mais ${fmt(r.ecretement_part * 100)} % de la production serait perdue : au-delà de la limite de 5 %.`,
     figs: (r, av) => [figCouv(r, av), figEcr(r)] },
-  { p: "B_batterie", h: "Ajouter la batterie de la fiche", t: r => `L'écrêtement retombe à ${fmt(r.ecretement_part * 100)} %… pour ${fmt(r.capex_batterie_EUR / 1e6, 0)} M€ d'investissement et ${fmt(r.om_annuel_EUR / 1e6)} M€ d'entretien par an : plus que ce que la batterie fait gagner.`,
+  { p: "B_batterie", saison: "ete", h: "Ajouter une grande batterie", t: r => `L'écrêtement retombe à ${fmt(r.ecretement_part * 100)} %… pour ${fmt(r.capex_batterie_EUR / 1e6, 0)} M€ d'investissement et ${fmt(r.om_annuel_EUR / 1e6)} M€ d'entretien par an : plus que ce que la batterie fait gagner.`,
     figs: (r, av, eco) => [
       { l: "Investissement batterie", v: fmt(eco.capex / 1e6, 0), u: "M€", r: `+ ${fmt(eco.om / 1e6)} M€/an d'entretien, pour un gain de ${fmt(eco.gain / 1e6)} M€/an.`,
         pill: eco.van < 0 ? ["ko", `✕ Non rentable : VAN ${fmt(eco.van / 1e6, 0)} M€ sur ${P.duree_analyse} ans`] : ["ok", `✓ Rentable : VAN ${fmt(eco.van / 1e6, 0)} M€`] },
       figCouv(r, av, eco.pts > 0.05 ? `Soit ${fmt(eco.capex / 1e6 / eco.pts, 0)} M€ par point de couverture gagné.` : ""), figEcr(r)] },
-  { p: "reco_sobre", h: "Miser sur l'éolien et les ballons d'eau chaude", t: r => `${fmt(r.couverture_horaire * 100, 0)} % de taux de couverture et ${fmt(r.ecretement_part * 100)} % d'écrêtement, sous la limite de 5 % chaque année, sans stockage.`,
+  { p: "reco_sobre", saison: "ete", ref: 0, h: "Miser sur l'éolien et les ballons d'eau chaude", t: r => `${fmt(r.couverture_horaire * 100)} % de taux de couverture et ${fmt(r.ecretement_part * 100)} % d'écrêtement, sous la limite de 5 % chaque année, sans stockage.`,
     figs: (r, av) => [figCouv(r, av), figEcr(r), { l: "Investissement", v: "0", u: "M€", r: "Sans stockage : éolien +50 %, solaire +25 %, ballons d'eau chaude chauffés à midi.", pill: ["ok", "✓ Aucun investissement de stockage"] }] },
-  { p: "reco_sobre", hl: "b-carte", h: "Où raccorder ?", t: () => { const s = ajoutsPostes().filter(p => p.depasse > 0.5).map(p => p.nom); return `${liste(s)} ${s.length > 1 ? "seraient saturés" : "serait saturé"} si l'on étendait le parc à l'identique : il faut orienter les nouveaux projets vers les postes encore libres.`; },
-    figs: () => { const sat = ajoutsPostes().filter(p => p.depasse > 0.5), ajout = Math.max(0, (P.m_pv - 1) * K.Ppv_A) + Math.max(0, (P.m_eol - 1) * K.Peol_A);
-      return [{ l: "Puissance à raccorder", v: fmt(ajout, 0), u: "MW", r: "Solaire et éolien ajoutés par rapport au parc actuel." },
-        { l: "Postes saturés", v: fmt(sat.length, 0), u: `sur ${GEO.postes.length}`, r: "Si l'on étendait le parc existant à l'identique (capacités S3REnR).", pill: sat.length ? ["ko", "✕ Orienter les projets"] : ["ok", "✓ Capacités suffisantes"] },
-        { l: "Capacité encore disponible", v: fmt(GEO.postes.reduce((s, p) => s + p.restant_MW, 0), 0), u: "MW", r: "Restant à affecter sur les postes sources du territoire (Caparéseau)." }]; } },
+  { p: "reco_sobre", hl: "b-carte", oriente: true, h: "Où raccorder ?", t: () => { const s = ajoutsPostes().filter(p => p.depasse > 0.5).map(p => p.nom), o = ajoutsPostes(true).filter(p => p.depasse > 0.5).length;
+      return `Étendu à l'identique, le parc saturerait ${liste(s)}. En orientant les nouveaux projets vers les postes libres, ${o ? `${o} poste${o > 1 ? "s restent dépassés" : " reste dépassé"}` : "ils tiennent dans les capacités disponibles"}.`; },
+    figs: () => { const sat = ajoutsPostes().filter(p => p.depasse > 0.5), ori = ajoutsPostes(true).filter(p => p.depasse > 0.5), ajout = Math.max(0, (P.m_pv - 1) * K.Ppv_A) + Math.max(0, (P.m_eol - 1) * K.Peol_A), rest = GEO.postes.reduce((t, p) => t + p.restant_MW, 0);
+      return [{ l: "Puissance à raccorder", v: fmt(ajout, 0), u: "MW", r: `Pour ${fmt(rest, 0)} MW encore disponibles sur les postes sources du territoire.` },
+        { l: "Postes saturés, parc étendu à l'identique", v: fmt(sat.length, 0), u: `sur ${GEO.postes.length}`, pill: sat.length ? ["ko", "✕ Capacités S3REnR dépassées"] : ["ok", "✓ Capacités suffisantes"] },
+        { l: "Postes dépassés, projets orientés", v: fmt(ori.length, 0), u: `sur ${GEO.postes.length}`, pill: ori.length ? ["ko", "✕ Capacité du territoire dépassée"] : ["ok", "✓ Tout tient dans les postes libres"], r: "Carte : lecture « projets orientés vers les postes libres »." }]; } },
 ];
 // Chiffres de la scène : taux de couverture avec l'écart à l'étape précédente, écrêtement avec son état
-const ecart = (x, n) => `${x >= 0 ? "+" : "−"}${fmt(Math.abs(x))} pt${Math.abs(x) >= 2 ? "s" : ""} vs étape ${n}`;
+const ecart = (x, lib) => `${x >= 0 ? "+" : "−"}${fmt(Math.abs(x))} point${Math.abs(x) >= 2 ? "s" : ""} par rapport à ${lib}`;
 const figCouv = (r, av, note) => ({ l: "Taux de couverture (heure par heure)", v: fmt(r.couverture_horaire * 100), u: "%",
-  d: av ? ecart((r.couverture_horaire - av.r.couverture_horaire) * 100, av.n) : "", r: note || "" });
+  d: av ? ecart((r.couverture_horaire - av.r.couverture_horaire) * 100, av.lib) : "", r: note || "" });
 const figEcr = r => { const ok = lastAll.every(x => x.conforme);
   return { l: "Énergie perdue (écrêtement)", v: fmt(r.ecretement_part * 100), u: "%", r: "Limite : 5 % de la production, chaque année météo.",
     pill: ok ? ["ok", "✓ Sous 5 % chaque année"] : r.conforme ? ["warn", "! Dépassé certaines années"] : ["ko", "✕ Au-delà de 5 %"] }; };
@@ -1423,16 +1430,19 @@ function clearHl() { document.querySelectorAll(".hl").forEach(e => e.classList.r
 $("demo-steps").innerHTML = DEMO.map((d, k) => `<li><button type="button" data-k="${k}" aria-label="Étape ${k + 1} : ${d.h}" title="${d.h}">${k + 1}</button></li>`).join("");
 $("demo-steps").onclick = e => { const b = e.target.closest("button"); if (b) { demoStep = +b.dataset.k; demoGo(); } };
 function demoGo() {
-  const d = DEMO[demoStep]; appliquerPreset(d.p); clearHl();
-  // écart mesuré par rapport à l'étape précédente qui portait un autre scénario
-  const prec = DEMO.slice(0, demoStep).map((x, k) => ({ x, k })).reverse().find(o => o.x.p !== d.p);
-  const av = prec ? { r: resPreset(prec.x.p), n: prec.k + 1 } : null;
+  const d = DEMO[demoStep];
+  // saison de la journée type (été pour les étapes solaires) et lecture de la carte (projets orientés à l'étape 5), sans toucher aux préférences
+  saison = d.saison || "hiver"; showOriente = !!d.oriente; $("ori_on").checked = showOriente; document.body.classList.toggle("demo-carte", !!d.oriente);
+  appliquerPreset(d.p); clearHl();
+  // écart mesuré par rapport à l'étape de référence (ref) ou à l'étape précédente qui portait un autre scénario
+  const prec = d.ref != null ? { x: DEMO[d.ref], k: d.ref } : DEMO.slice(0, demoStep).map((x, k) => ({ x, k })).reverse().find(o => o.x.p !== d.p);
+  const av = prec ? { r: resPreset(prec.x.p), lib: prec.k === 0 ? "aujourd'hui" : `l'étape ${prec.k + 1}` } : null;
   for (const b of $("demo-steps").querySelectorAll("button")) { const k = +b.dataset.k; b.classList.toggle("vu", k < demoStep); if (k === demoStep) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current"); }
   $("demo-h").textContent = d.h; $("demo-p").textContent = d.t(lastR);
   $("demo-figs").innerHTML = d.figs(lastR, av, lastEco).map(f => `<div class="ds-fig"><span class="label">${f.l}</span><div class="v">${f.v}<span class="u">${f.u}</span></div>${f.d ? `<span class="d">${f.d}</span>` : ""}${f.pill ? `<span class="pill ${f.pill[0]}">${f.pill[1]}</span>` : ""}${f.r ? `<span class="r">${f.r}</span>` : ""}</div>`).join("");
   const anim = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-  if (d.hl) { const c = $(d.hl); c.classList.add("hl");
-    scrollTo({ top: Math.max(0, scrollY + c.getBoundingClientRect().top - document.querySelector(".ds-bar").offsetHeight - 12), behavior: anim }); }
+  if (d.hl) { $(d.hl).classList.add("hl");
+    scrollTo({ top: Math.max(0, scrollY + $("demo-figs").getBoundingClientRect().top - document.querySelector(".ds-bar").offsetHeight - 10), behavior: anim }); }
   else scrollTo({ top: Math.max(0, scrollY + $("demo").getBoundingClientRect().top - 8), behavior: anim });
 }
 // ---- mode projection (touche P ou bouton) : texte 18 px, réglages repliés ; l'état de la barre est rétabli à la sortie.
