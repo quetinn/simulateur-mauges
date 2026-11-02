@@ -677,11 +677,21 @@ let P = { ...DEF, annee: META.annee_typique }, trajSuit = true, vue = "elu", sai
 const PRESETS = META.presets;
 const sim = (p, a, series) => MOTEUR.simuler(ANS[a], { ...p, annee: a }, DEF, META.profils, series);
 // ---- contrôles
+// « 2021-2025 (moyenne) » : les indicateurs sont la moyenne des 5 années simulées séparément ; les courbes restent sur l'année typique.
+let moy = false;
+const MOY_TXT = `${META.annees[0]}-${META.annees[META.annees.length - 1]}`;
 const anneeSelects = [$("annee"), $("annee-bottom")];
 for (const select of anneeSelects) {
   for (const a of META.annees) select.add(new Option(a + (a === META.annee_typique ? " (typique)" : ""), a));
+  select.add(new Option(`${MOY_TXT} (moyenne)`, "moy"));
   select.value = META.annee_typique;
-  select.onchange = () => { P.annee = +select.value; for (const other of anneeSelects) other.value = P.annee; render(); };
+  select.onchange = () => { moy = select.value === "moy"; P.annee = moy ? META.annee_typique : +select.value; for (const other of anneeSelects) other.value = select.value; render(); };
+}
+// Moyenne des indicateurs numériques des 5 années ; « conforme » seulement si chaque année l'est
+function moyenneAnnees(all, base) {
+  const r = { ...base };
+  for (const k of Object.keys(base)) if (typeof base[k] === "number") r[k] = all.reduce((t, x) => t + x[k], 0) / all.length;
+  r.conforme = all.every(x => x.conforme); return r;
 }
 const chips = $("presets");
 const PRESET_IDS = ["A", "B", "C", "B_batterie", "C_batterie", "reco_sobre", "reco_batterie", "2035_reference"];
@@ -723,7 +733,7 @@ function syncControls() {
   chips.value = presetActif || ""; $("preset_desc").textContent = presetActif ? PRESETS[presetActif].libelle : "Réglages modifiés à la main : aucun scénario prédéfini ne correspond.";
   $("ve_pilote").disabled = P.horizon !== "2035";
   $("ve_note").textContent = P.horizon === "2035" ? "Recharge placée sur les surplus solaires (sinon heures creuses)." : "Disponible à l'horizon 2035 (VE en nombre).";
-  for (const select of anneeSelects) select.value = P.annee;
+  for (const select of anneeSelects) select.value = moy ? "moy" : P.annee;
   // valeurs annoncées par les lecteurs d'écran : MW et %, pas le multiplicateur brut
   for (const [id, v] of [["m_pv", "v-pv"], ["m_eol", "v-eol"], ["bat_puissance", "v-bat"], ["ecs_deplace", "v-ecs"], ["ve_pilote", "v-ve"], ["pv_plafond", "v-plaf"]]) $(id).setAttribute("aria-valuetext", $(v).textContent.replace(/ · /g, ", "));
 }
@@ -731,7 +741,7 @@ function syncControls() {
 let lastSeries = null, lastR = null, lastAll = null, lastEco = null;
 function render() {
   const all = META.annees.map(a => sim(P, a, a === P.annee));
-  const r = all[META.annees.indexOf(P.annee)];
+  const an = all[META.annees.indexOf(P.annee)], r = moy ? moyenneAnnees(all, an) : an;
   const eco = ecoBatterie(r, all);
   lastR = r; lastAll = all; lastSeries = r.series; lastEco = eco;
   renderOneline(r); renderKpis(r, all, eco); renderVerdict(r, all, eco); renderJour(r.series); renderCarte(); renderMois(r.series);
@@ -747,7 +757,7 @@ function renderOneline(r) {
   if (P.ecs_deplace > 0) sols.push(`${fr(P.ecs_deplace * 100, 0)} % des ballons à midi`);
   if (P.horizon === "2035" && P.ve_pilote > 0) sols.push(`${fr(P.ve_pilote * 100, 0)} % des VE pilotés`);
   if (P.pv_plafond < 1) sols.push(`injection solaire plafonnée à ${fr(P.pv_plafond * 100, 0)} %`);
-  $("oneline").innerHTML = `<b>Solaire ${fr(P.m_pv * K.Ppv_A, 0)} MW (${variation(P.m_pv)} vs parc actuel)</b>, <b>éolien ${fr(P.m_eol * K.Peol_A, 0)} MW (${variation(P.m_eol)} vs parc actuel)</b>, ${sols.length ? sols.join(", ") : "sans solution de flexibilité"} — ${P.horizon === "2035" ? "consommation 2035 électrifiée" : "consommation actuelle"}, météo ${P.annee}.`;
+  $("oneline").innerHTML = `<b>Solaire ${fr(P.m_pv * K.Ppv_A, 0)} MW (${variation(P.m_pv)} vs parc actuel)</b>, <b>éolien ${fr(P.m_eol * K.Peol_A, 0)} MW (${variation(P.m_eol)} vs parc actuel)</b>, ${sols.length ? sols.join(", ") : "sans solution de flexibilité"} — ${P.horizon === "2035" ? "consommation 2035 électrifiée" : "consommation actuelle"}, ${moy ? `moyenne des années météo ${MOY_TXT} (courbes : année ${P.annee})` : `météo ${P.annee}`}.`;
 }
 // Économie de la batterie (vs le même scénario sans batterie) : gain moyen 2021-2025, VAN, points de couverture gagnés
 function ecoBatterie(r, all) {
@@ -755,7 +765,8 @@ function ecoBatterie(r, all) {
   const sans = META.annees.map(a => sim({ ...P, bat_pilotage: "aucune" }, a));
   const gain = all.reduce((s, x, i) => s + x.valeur_annuelle_EUR - sans[i].valeur_annuelle_EUR, 0) / all.length;
   const om = r.om_annuel_EUR, van = (gain - om) * r.facteur_annuite - capex;
-  const pts = (r.couverture_horaire - sans[META.annees.indexOf(P.annee)].couverture_horaire) * 100;
+  const ref = moy ? sans.reduce((t, x) => t + x.couverture_horaire, 0) / sans.length : sans[META.annees.indexOf(P.annee)].couverture_horaire;
+  const pts = (r.couverture_horaire - ref) * 100;
   return { capex, gain, om, van, pts };
 }
 function renderKpis(r, all, eco) {
@@ -777,7 +788,8 @@ function renderKpis(r, all, eco) {
   }
   // Repère « parc actuel » : solaire et éolien ×1, sans batterie, ballons ni plafond, même année et même horizon
   // (les hypothèses VE de l'horizon 2035 gardent leurs valeurs par défaut).
-  const parc = sim({ ...P, m_pv: 1, m_eol: 1, bat_pilotage: "aucune", ecs_deplace: 0, pv_plafond: 1, ve_pilote: DEF.ve_pilote, ve_non_pilote: DEF.ve_non_pilote }, P.annee);
+  const pParc = { ...P, m_pv: 1, m_eol: 1, bat_pilotage: "aucune", ecs_deplace: 0, pv_plafond: 1, ve_pilote: DEF.ve_pilote, ve_non_pilote: DEF.ve_non_pilote };
+  const parc = moy ? moyenneAnnees(META.annees.map(a => sim(pParc, a)), {}) : sim(pParc, P.annee);
   const gwh = v => fr(v / 1000, v / 1000 < 10 ? 1 : 0);
   $("kpis-off").innerHTML = "";
   $("kpis").innerHTML = `
@@ -910,7 +922,7 @@ function renderJour(s) {
     series };
   opt.tooltip.formatter = ps => { const h = ps[0].dataIndex;
     return `<b>${h} h</b><br>solaire ${fr(j.pv[h], 0)} MW · éolien ${fr(j.eol[h], 0)} MW<br>consommation ${fr(j.C[h], 0)} MW${j.ch[h] > .05 ? `<br>charge batterie ${fr(j.ch[h], 0)} MW` : ""}${j.dch[h] > .05 ? `<br>décharge ${fr(j.dch[h], 0)} MW` : ""}${hasFlex && flex[h] > .2 ? `<br>consommation déplacée ${fr(flex[h], 0)} MW` : ""}`; };
-  $("jt-sub").textContent = `Jour ouvré moyen de ${saison === "hiver" ? "janvier" : "juillet"} ${P.annee}, heure locale`;
+  $("jt-sub").textContent = `Jour ouvré moyen de ${saison === "hiver" ? "janvier" : "juillet"} ${P.annee}, heure locale${moy ? " (année typique ; indicateurs en moyenne " + MOY_TXT + ")" : ""}`;
   setLegend("c-jour", "lg-jour", [[N.eol, "background:var(--s-eol)", "a"], [N.pv, "background:var(--s-pv)", "a"], [N.conso, "background:var(--ink)"], [N.seuil, "background:var(--seuil)"],
     ...(bat ? [[N.ch, "background:var(--s-bat)", "a"], [N.dch, "background:transparent;box-shadow:inset 0 0 0 1.5px var(--s-bat)", "a"]] : []), ...(hasFlex ? [[N.flex, "background:var(--s-ecs);opacity:.55", "a"]] : [])]);
   drawChart("c-jour", opt);
@@ -933,7 +945,7 @@ function renderMois(s) {
   opt.tooltip.axisPointer = { type: "shadow", shadowStyle: { color: hexA(c.ink3, .12) } };
   opt.tooltip.formatter = ps => { const m = ps[0].dataIndex, g = v => fr(v / 1000, 1);
     return `<b>${M[m]} ${P.annee}</b><br>production : ${g(loc[m] + Math.max(exp[m], 0) + ecr[m])} GWh<br>&nbsp;· consommée sur place ${g(loc[m])} · surplus réseau ${g(Math.max(exp[m], 0))} · écrêtée ${g(ecr[m])}<br>consommation : ${g(cons[m])} GWh<br>&nbsp;· couverte localement ${g(cons[m] - ach[m])} · achetée ${g(ach[m])}`; };
-  $("bm-sub").textContent = `Barre de gauche : production · barre de droite : consommation — ${P.annee}`;
+  $("bm-sub").textContent = `Barre de gauche : production · barre de droite : consommation — ${P.annee}${moy ? " (année typique)" : ""}`;
   setLegend("c-mois", "lg-mois", [[N.loc, "background:var(--bocage)", "a"], [N.exp, "background:var(--accent);opacity:.55", "a"], [N.ecr, "background:var(--seuil)", "a"], [N.cl, "background:var(--bocage);opacity:.35", "a"], [N.ca, "background:var(--ink-3);opacity:.55", "a"]]);
   drawChart("c-mois", opt);
 }
@@ -1337,6 +1349,7 @@ function setVue(v) {
   $("v-elu").hidden = v === "expert"; $("v-expert").hidden = v !== "expert";
   document.body.classList.toggle("demo-on", v === "demo");
   const projOn = document.body.classList.contains("projection");
+  if (v === "demo" && moy) { moy = false; P.annee = META.annee_typique; syncControls(); }
   if (v === "demo") { demoStep = 0; if (!projOn) { projAuto = true; setProjection(true); } else demoGo(); }
   else { clearHl(); if (projAuto) { projAuto = false; setProjection(false); } }
   if (v === "expert") { syncForm(); renderExpert(); }
@@ -1414,6 +1427,7 @@ function lireLien() {
   const ajust = [];
   for (const [k, brut] of new URLSearchParams(h)) {
     const def = META.parametres[k]; if (!def) { ajust.push(k); continue; }
+    if (k === "annee" && brut === "moy") { moy = true; P.annee = META.annee_typique; continue; }
     if (def.choix) { if (def.choix.includes(brut)) P[k] = brut; else ajust.push(def.libelle); continue; }
     let x = Number(brut); if (!isFinite(x)) { ajust.push(def.libelle); continue; }
     const borne = Math.min(def.max ?? x, Math.max(def.min ?? x, x)); if (borne !== x) ajust.push(def.libelle);
@@ -1424,6 +1438,7 @@ function lireLien() {
 }
 function ecrireLien() {
   const q = new URLSearchParams(); for (const k of Object.keys(META.parametres)) if (P[k] !== DEF[k]) q.set(k, P[k]);
+  if (moy) q.set("annee", "moy");
   const h = q.toString(); try { history.replaceState(null, "", h ? "#" + h : location.pathname + location.search); } catch (e) { /* file:// sans history : on garde l'adresse */ }
 }
 $("lien-ok").onclick = () => { $("lien-note").hidden = true; };
