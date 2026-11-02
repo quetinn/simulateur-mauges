@@ -118,6 +118,7 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;background:var(--pane
 .seg-prix{margin-top:4px;align-self:stretch;max-width:260px}
 .seg-prix button{white-space:nowrap;padding-inline:8px;font-size:12.5px}
 body.projection .seg-prix button{font-size:15px}
+.bandeau{margin:0;padding:10px 12px;border:1px solid var(--warn);background:var(--warn-bg);border-radius:4px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
 .ctl-row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
 .ctl-row .seg{min-width:0}
 .ctl-row .seg button{white-space:nowrap;padding-inline:10px}
@@ -325,6 +326,7 @@ body.projection .commune-lbl .cl{font-size:13px}
     <span class="label">Scénarios</span>
     <select id="presets" aria-label="Choisir un scénario"></select>
     <p class="note" id="preset_desc"></p>
+    <button type="button" class="linkbtn" id="copier-lien">Copier le lien du scénario</button>
   </section>
   <section class="panel" aria-label="Production">
     <span class="label">Production</span>
@@ -372,6 +374,7 @@ body.projection .commune-lbl .cl{font-size:13px}
       <div class="ds-nav"><button id="demo-prev" aria-label="Étape précédente" aria-keyshortcuts="ArrowLeft">←</button><button id="demo-next" aria-label="Étape suivante" aria-keyshortcuts="ArrowRight">→</button></div>
   </div>
   <div class="panel ds-figs demo-only" id="demo-figs"></div>
+  <p class="bandeau" id="lien-note" role="status" hidden><span id="lien-txt"></span> <button type="button" class="iconbtn" id="lien-ok">Compris</button></p>
   <section id="b-resume" aria-labelledby="h-resume"><h2 class="sec-h" id="h-resume">Résumé du scénario</h2><p class="oneline" id="oneline"></p></section>
   <section id="b-kpis" aria-labelledby="h-kpis">
     <div class="sec-bar"><h2 class="sec-h" id="h-kpis">Indicateurs clés</h2></div>
@@ -699,7 +702,7 @@ function render() {
   lastR = r; lastAll = all; lastSeries = r.series; lastEco = eco;
   renderOneline(r); renderKpis(r, all, eco); renderVerdict(r, all, eco); renderJour(r.series); renderCarte(); renderMois(r.series);
   if (vue === "expert") { syncForm(); renderExpert(); }
-  applyVis();
+  applyVis(); ecrireLien();
   $("hz_note").textContent = P.horizon === "2035" ? `${fr(r.ve_nb, 0)} VE · ${fr(r.pac_nb, 0)} logements en PAC · ${fr(r.consommation_MWh / 1000, 0)} GWh/an` : `Consommation mesurée de l'année (${fr(r.consommation_MWh / 1000, 0)} GWh).`;
 }
 const rng = (all, k, f = 100, d = 1) => { const v = all.map(r => r[k] * f); return `${fr(Math.min(...v), d)}–${fr(Math.max(...v), d)}`; };
@@ -1336,6 +1339,33 @@ document.addEventListener("keydown", e => { if (e.target.closest("input,select,t
   if (vue === "demo" && e.key === "ArrowLeft") $("demo-prev").click();
   if (vue === "demo" && /^[1-9]$/.test(e.key) && +e.key <= DEMO.length) { demoStep = +e.key - 1; demoGo(); }
 });
+// ---- lien partageable : les paramètres qui s'écartent des valeurs par défaut sont écrits dans le #hash
+// (ex. #m_pv=2&bat_pilotage=pointe) ; au chargement, valeurs inconnues ignorées et valeurs hors bornes ramenées dans les bornes.
+function lireLien() {
+  const h = location.hash.replace(/^#/, ""); if (!h) return;
+  const ajust = [];
+  for (const [k, brut] of new URLSearchParams(h)) {
+    const def = META.parametres[k]; if (!def) { ajust.push(k); continue; }
+    if (def.choix) { if (def.choix.includes(brut)) P[k] = brut; else ajust.push(def.libelle); continue; }
+    let x = Number(brut); if (!isFinite(x)) { ajust.push(def.libelle); continue; }
+    const borne = Math.min(def.max ?? x, Math.max(def.min ?? x, x)); if (borne !== x) ajust.push(def.libelle);
+    P[k] = k === "annee" ? (META.annees.includes(Math.round(borne)) ? Math.round(borne) : META.annee_typique) : borne;
+  }
+  presetActif = Object.keys(PRESETS).find(id => Object.keys(META.parametres).every(k => ({ ...DEF, annee: P.annee, ...PRESETS[id].p })[k] === P[k])) || null;
+  if (ajust.length) { $("lien-txt").textContent = `Le lien contenait des valeurs hors limites ou inconnues (${ajust.join(", ")}) : elles ont été ajustées ou ignorées.`; $("lien-note").hidden = false; }
+}
+function ecrireLien() {
+  const q = new URLSearchParams(); for (const k of Object.keys(META.parametres)) if (P[k] !== DEF[k]) q.set(k, P[k]);
+  const h = q.toString(); try { history.replaceState(null, "", h ? "#" + h : location.pathname + location.search); } catch (e) { /* file:// sans history : on garde l'adresse */ }
+}
+$("lien-ok").onclick = () => { $("lien-note").hidden = true; };
+$("copier-lien").onclick = async () => {
+  ecrireLien(); const url = location.href, b = $("copier-lien");
+  let ok = false; try { await navigator.clipboard.writeText(url); ok = true; } catch (e) {
+    const t = document.createElement("textarea"); t.value = url; document.body.appendChild(t); t.select(); try { ok = document.execCommand("copy"); } catch (e2) { ok = false; } t.remove(); }
+  b.textContent = ok ? "Lien copié" : "Copie impossible : copier l'adresse de la page"; setTimeout(() => { b.textContent = "Copier le lien du scénario"; }, 2500);
+};
+lireLien();
 buildForm(); syncControls(); render();
 })();
 </script>
