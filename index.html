@@ -1,0 +1,1512 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulateur ENR Mauges</title>
+<!-- Tout est local (vendor/) : l'application fonctionne hors ligne ; seules les tuiles du fond de carte viennent d'Internet. -->
+<link rel="stylesheet" href="vendor/fonts/fonts.css">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/echarts/echarts.min.js"></script>
+<style>
+/* Concept « Bocage & réseau » : relevé cartographique (calque froid, filets fins) × signalétique électrique (plaques, seuils).
+   Layout : en-tête, commandes des barres latérales puis contenu en trois colonnes ; une colonne sous 900 px. */
+:root{
+  --bg:#F1F7F1; --panel:#FFFFFF; --ink:#14222B; --ink-2:#4A5A63; --ink-3:#5F6D73; /* --ink-3 foncé (charte : #6E7C82, 4,3:1) pour tenir l'AA : 5,3:1 sur blanc, 4,9:1 sur --bg */ --line:#D6DFDA; --line-2:#E6ECE9;
+  --accent:#1F5F8B; --accent-weak:#E3EDF5; --bocage:#2F5D3A; --bocage-weak:#E4EEE6; --seuil:#C2410C;
+  --s-pv:#EDA100; --s-eol:#2A78D6; --s-ecs:#1BAF7A; --s-ve:#EB6834; --s-bat:#6250D6; --s-pac:#E87BA4;
+  --ok:#0B7A0B; --warn:#9A6A00; --ko:#C23434; --ok-bg:#E5F4E5; --warn-bg:#FBF1D9; --ko-bg:#FBE6E6;
+  --f-display:"Archivo","Arial Narrow",Arial,sans-serif; --f-body:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --night:#C9D3DC; --day:#F7E7B4;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#121816; --panel:#1A2220; --ink:#E8EEEB; --ink-2:#A9B6B1; --ink-3:#7F8C88; --line:#2C3633; --line-2:#232C29;
+  --accent:#5B9BD0; --accent-weak:#1E2E3A; --bocage:#7FB08A; --bocage-weak:#1F2C24; --seuil:#F08A4B;
+  --s-pv:#C98500; --s-eol:#3987E5; --s-ecs:#199E70; --s-ve:#D95926; --s-bat:#9085E9; --s-pac:#D55181;
+  --ok:#5BC85B; --warn:#F2C14E; --ko:#EF7272; --ok-bg:#1C2E1C; --warn-bg:#2E2816; --ko-bg:#321C1C; --night:#24303A; --day:#4A4228; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#121816; --panel:#1A2220; --ink:#E8EEEB; --ink-2:#A9B6B1; --ink-3:#7F8C88; --line:#2C3633; --line-2:#232C29;
+  --accent:#5B9BD0; --accent-weak:#1E2E3A; --bocage:#7FB08A; --bocage-weak:#1F2C24; --seuil:#F08A4B;
+  --s-pv:#C98500; --s-eol:#3987E5; --s-ecs:#199E70; --s-ve:#D95926; --s-bat:#9085E9; --s-pac:#D55181;
+  --ok:#5BC85B; --warn:#F2C14E; --ko:#EF7272; --ok-bg:#1C2E1C; --warn-bg:#2E2816; --ko-bg:#321C1C; --night:#24303A; --day:#4A4228; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+.content{min-width:0;display:flex;flex-direction:column}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--f-body);font-size:15px;line-height:1.45;padding-inline:16px;padding-block:0 32px}
+h1,h2,h3{font-family:var(--f-display);font-stretch:87.5%;margin:0;text-wrap:balance;letter-spacing:-.005em}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono)}
+.u{font-family:var(--f-mono);font-size:max(11px,.62em);color:var(--ink-2);font-weight:400;letter-spacing:0;margin-left:.15em}
+.label{font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2);font-weight:700}
+.wrap{max-width:1360px;margin:0 auto}
+/* en-tête */
+header{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:12px 28px;padding-top:18px}
+.brand{display:flex;flex-direction:column;gap:2px;min-width:0}
+.brand h1{font-size:clamp(22px,2.6vw,30px);font-weight:700}
+.brand h1 span{color:var(--bocage)}
+.tabs{display:flex;gap:2px;border:1px solid var(--line);border-radius:4px;padding:2px;background:var(--panel)}
+.tabs button{border:0;background:none;padding:6px 14px;border-radius:3px;cursor:pointer;color:var(--ink-2);font-weight:700}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--panel)}
+.hdr-right{justify-self:end;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.brand{grid-column:1}
+header>.tabs{grid-column:2;grid-row:1}
+header>.hdr-right{grid-column:3;grid-row:1}
+.year-pick{display:flex;gap:10px;align-items:center}
+.bottom-controls{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:25;display:flex;align-items:center;justify-content:center;gap:16px;width:max-content;max-width:calc(100vw - 24px);padding:8px 12px;border:1px solid var(--line);border-radius:6px;background:color-mix(in srgb,var(--panel) 94%,transparent);box-shadow:0 4px 18px rgba(0,0,0,.14);backdrop-filter:blur(8px)}
+.bottom-controls .label{white-space:nowrap}
+body{padding-bottom:76px}
+/* vue Démo : pas de barre du bas ; le panneau d'étape est seul en bas d'écran, la page défile pour qu'il ne masque rien */
+/* vue Démo : une scène (bandeau d'étape fixé en haut + 2-3 chiffres en grand), sans panneau superposé au contenu */
+body.demo-on{padding-bottom:40vh;font-size:17px}
+body.demo-on .bottom-controls{display:none!important}
+body.demo-on #b-resume,body.demo-on #b-kpis{display:none}
+body.demo-on .v-suite{display:none}
+body.demo-carte #b-verdict{display:none}
+body.demo-carte .map{height:max(260px,calc(100vh - 500px))}
+body.demo-on .map{height:clamp(280px,calc(100vh - 400px),440px)}
+@media(max-width:900px){header{grid-template-columns:minmax(0,1fr) auto;gap:12px}
+  .brand{grid-column:1/-1}
+  header>.tabs{grid-column:1/-1;grid-row:2;justify-self:center}
+  header>.hdr-right{grid-column:1/-1;grid-row:3;justify-self:center}
+  .bottom-controls{gap:8px;padding:6px 8px}
+  .bottom-controls .tabs button{padding:5px 8px;font-size:13px}
+  .bottom-controls .year-pick{gap:5px}
+  .bottom-controls .label{font-size:11px}
+  .bottom-controls select{max-width:94px}}
+select{border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:6px 8px}
+.iconbtn{border:1px solid var(--line);background:var(--panel);border-radius:4px;padding:6px 10px;cursor:pointer;font-weight:700}
+/* grille */
+.grid{--l:340px;--r:0px;display:grid;grid-template-columns:var(--l) minmax(0,1fr) var(--r);grid-template-rows:auto auto;column-gap:0;margin-top:18px}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:4px}
+/* rail */
+aside{display:flex;flex-direction:column;gap:14px;align-self:start;position:sticky;top:12px}
+@media (max-width:900px){aside{position:static}}
+aside section{padding:14px 14px 16px;display:flex;flex-direction:column;gap:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:3px;padding:5px 9px;cursor:pointer;font-weight:700;font-size:13.5px}
+.chip[aria-pressed="true"]{border-color:var(--ink);background:var(--ink);color:var(--panel)}
+.ctl{display:flex;flex-direction:column;gap:6px}
+.ctl-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ctl-h b{font-weight:700}
+.ctl-v{font-family:var(--f-mono);font-size:13px;color:var(--ink)}
+.ctl small{color:var(--ink-3);font-size:12.5px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--line)}
+input[type=range]::-moz-range-track{height:3px;background:var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;margin-top:-6.5px;background:var(--panel);border:2px solid var(--ink);border-radius:2px}
+input[type=range]::-moz-range-thumb{width:13px;height:13px;background:var(--panel);border:2px solid var(--ink);border-radius:2px}
+.ticks{position:relative;height:16px;margin-top:-4px}
+.ticks span{position:absolute;transform:translateX(-50%);font-family:var(--f-mono);font-size:11px;color:var(--ink-3)}
+.ticks span::before{content:"";display:block;width:1px;height:4px;background:var(--ink-3);margin:0 auto 1px}
+.sol{border-top:1px solid var(--line-2);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+.sol:first-of-type{border-top:0;padding-top:0}
+.sol-h{display:flex;align-items:center;gap:10px}
+.sol-h .sw{width:10px;height:10px;border-radius:2px;flex:none}
+.sol-h b{flex:1}
+.switch{position:relative;width:36px;height:20px;flex:none}
+.switch input{opacity:0;width:100%;height:100%;margin:0;position:absolute;cursor:pointer}
+.switch span{position:absolute;inset:0;border:1.5px solid var(--ink-3);border-radius:10px;pointer-events:none}
+.switch span::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:var(--ink-3);top:2.5px;left:3px;transition:transform .15s}
+.switch input:checked+span{background:var(--ink);border-color:var(--ink)}
+.switch input:checked+span::after{transform:translateX(15px);background:var(--panel)}
+.switch input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.seg{display:flex;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.seg button{flex:1;border:0;background:var(--panel);padding:5px 6px;cursor:pointer;font-size:13px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent-weak);color:var(--accent);font-weight:700}
+.seg-prix{margin-top:4px;align-self:stretch;max-width:260px}
+.seg-prix button{white-space:nowrap;padding-inline:8px;font-size:12.5px}
+body.projection .seg-prix button{font-size:15px}
+.bandeau{margin:0;padding:10px 12px;border:1px solid var(--warn);background:var(--warn-bg);border-radius:4px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.meth{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px 32px;margin-bottom:12px}
+.meth h3,.meth-hyp h3{font-size:16px;margin:0 0 6px;display:inline}
+.meth section h3{display:block}
+.meth ol,.meth ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:5px;font-size:14px;max-width:72ch}
+.meth-hyp summary{cursor:pointer;padding:6px 0}
+#t-hyp td:nth-child(2){white-space:nowrap}
+#t-hyp td:last-child{color:var(--ink-2);font-size:12.5px;min-width:280px}
+.export{font-size:13.5px}
+.export .r{color:var(--ink-2)}
+.ctl-row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
+.ctl-row .seg{min-width:0}
+.ctl-row .seg button{white-space:nowrap;padding-inline:10px}
+.sub{display:flex;flex-direction:column;gap:8px;padding-left:20px}
+.linkbtn{background:none;border:1px dashed var(--accent);color:var(--accent);border-radius:3px;padding:5px 8px;cursor:pointer;font-weight:700;font-size:13px;align-self:flex-start}
+/* contenu */
+main{display:flex;flex-direction:column;gap:20px;min-width:0}
+.oneline{font-size:15.5px;color:var(--ink-2)}
+.oneline b{color:var(--ink)}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0}
+@media (max-width:1180px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:600px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{padding:14px 16px 16px;border-right:1px solid var(--line-2);display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi:last-child{border-right:0}
+.kpi .v{font-family:var(--f-display);font-stretch:87.5%;font-weight:700;font-size:clamp(28px,3vw,42px);line-height:1.05;font-variant-numeric:tabular-nums}
+.kpi .r{font-size:12.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.kpi .r b{color:var(--ink-2);font-weight:400}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:700;padding:2px 7px;border-radius:2px;align-self:flex-start}
+.pill.ok{background:var(--ok-bg);color:var(--ok)}.pill.ko{background:var(--ko-bg);color:var(--ko)}.pill.warn{background:var(--warn-bg);color:var(--warn)}
+.gauge{margin-top:6px}
+.verdict{display:flex;gap:12px;padding:14px 16px;border-left:3px solid var(--ok)}
+.verdict.ko{border-left-color:var(--ko)}.verdict.warn{border-left-color:var(--warn)}
+.verdict .ic{font-family:var(--f-mono);font-weight:700;font-size:18px;line-height:1.2}
+.verdict p{margin:0;max-width:85ch}
+.row2{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:20px}
+@media (max-width:1180px){.row2{grid-template-columns:minmax(0,1fr)}}
+.card{padding:16px}
+.card-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.card-h h2{font-size:19px;font-weight:700}
+.card-h p{margin:2px 0 0;color:var(--ink-3);font-size:13px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--ink-2);margin-top:6px}
+.legend i{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}
+.legend i.a{height:9px;border-radius:1px}
+svg text{font-family:var(--f-mono);font-size:10.5px;fill:var(--ink-3)}
+svg .lbl{font-family:var(--f-body);font-size:11.5px;fill:var(--ink-2)}
+.chart{width:100%;height:auto;display:block}
+.ec{width:100%;min-height:200px}
+.legend button{min-height:24px;background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;border-radius:2px}
+.legend button:hover{color:var(--ink)}
+.legend button.off{opacity:.45;text-decoration:line-through}
+.legend button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 8 tuiles : 4 par ligne (grandeurs de la fiche, puis contraintes et coût), 2 par ligne si la place manque */
+#b-kpis{container-type:inline-size}
+.kpis{grid-template-columns:repeat(4,minmax(0,1fr))!important;overflow:visible}
+@container (max-width:760px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+.kpis>.kpi{box-shadow:0 1px 0 var(--line-2)}
+.user-off{display:none!important}
+.row2.single{grid-template-columns:minmax(0,1fr)}
+#presets{width:100%}
+#preset_desc{margin:6px 0 0}
+.maptog{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700}
+.iconbtn.burger{display:inline-flex;align-items:center;gap:8px}
+.iconbtn.burger svg{display:block}
+.hint{font-size:12px;color:var(--ink-3);margin:2px 0 0}
+.maptogs{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center}
+.maptog{position:relative}
+.map-help{margin:0 0 8px;padding:8px 10px;border-left:3px solid var(--accent);background:var(--accent-weak);color:var(--ink-2);font-size:13px}
+.map-info{border:0;background:none;color:var(--ink-3);padding:2px 4px;cursor:pointer;line-height:1}
+.map-info:hover,.map-info[aria-expanded="true"]{color:var(--accent)}
+.map-info svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;stroke-width:1.5}
+.sec-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.sec-h{font-family:var(--f-body);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2);font-weight:700;margin:0 0 6px}
+.sec-bar .sec-h{margin:0}
+.kpi{position:relative}
+.kpis .kpi .v{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:.12em;font-size:clamp(26px,2.5vw,36px)}
+.k-head{display:flex;align-items:flex-start;justify-content:space-between;gap:6px}
+.k-tools{display:inline-flex;gap:0;flex:none;margin:-5px -7px 0 0}
+.k-btn{border:0;background:none;color:var(--ink-3);width:26px;height:26px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.k-btn:hover,.k-btn[aria-expanded="true"]{background:var(--line-2);color:var(--ink)}
+.k-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.k-btn svg{display:block;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.k-eye .e-closed{display:none}
+.k-min .k-eye .e-open{display:none}.k-min .k-eye .e-closed{display:block}
+.k-pop{position:absolute;left:0;top:34px;width:min(290px,86vw);z-index:50;background:var(--ink);color:var(--panel);font-size:12.5px;line-height:1.45;padding:9px 11px;border-radius:4px;box-shadow:0 8px 22px rgba(0,0,0,.28);text-transform:none;letter-spacing:0;font-weight:400}
+.k-pop b{font-weight:700}
+.kpis:empty{display:none}
+.kpis-off{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.kpis-off:empty{display:none}
+.kpi.k-min{flex-direction:row;align-items:center;padding:3px 4px 3px 12px;border:1px dashed var(--line);border-radius:4px;background:var(--panel)}
+.kpi.k-min>:not(.k-head){display:none}
+.kpi.k-min .k-head{align-items:center;gap:10px}
+.kpi.k-min .k-tools{margin:0}
+.kpi.k-min .k-info{display:none}
+.kpi.k-min .label{color:var(--ink-3)}
+.commune-lbl .cd{display:block;font-weight:400;font-size:10.5px;color:var(--ink-2)}
+/* barre latérale repliable : elle pousse le contenu, elle ne le recouvre pas */
+.grid{transition:grid-template-columns .25s ease}
+.rail-tools{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;position:sticky;top:12px;z-index:10;align-self:start}
+.rail-tools button{border:1px solid var(--line);background:var(--panel);color:var(--ink-2);width:28px;height:28px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+/* « Réglages » : chevron ; « Affichage » : œil (même icône que pour masquer un indicateur), état ouvert = bouton foncé */
+#menu-toggle[aria-expanded="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.rail-tools button:hover{background:var(--line-2);color:var(--ink)}
+.rail-tools button svg{display:block;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+#side,#disp{min-width:0;max-height:calc(100vh - 24px);overflow:auto;scrollbar-width:thin;transition:opacity .2s ease}
+#side{margin-right:20px}
+#disp{margin-left:20px}
+body.side-closed .grid{--l:38px}
+body.side-closed #side{overflow:hidden;margin-right:0}
+body.side-closed #side>section{display:none}
+body.side-closed #side .side-h>.label{display:none}
+body.disp-open .grid{--r:300px}
+body:not(.disp-open) .grid{--r:38px}
+body:not(.disp-open) #disp{overflow:hidden;margin-left:0}
+body:not(.disp-open) #disp>section{display:none}
+body:not(.disp-open) #disp .side-h>.label{display:none}
+.dpanel{padding:12px 14px 14px;display:flex;flex-direction:column;gap:10px}
+.dpanel .dg{margin-top:6px}
+.dpanel .dg>.label{display:block;margin-bottom:2px}
+.dpanel .mrow{display:flex;gap:10px;align-items:center;padding:5px 0;cursor:pointer;font-size:14px}
+.dpanel .mrow input{width:17px;height:17px;accent-color:var(--ink);margin:0;flex:none}
+.dpanel .df{display:flex;gap:8px;padding-top:6px;border-top:1px solid var(--line)}
+.dpanel .df button{flex:1}
+@media (max-width:900px){#side,#disp{max-height:none;margin:0}
+  body.side-closed .grid,body.disp-open .grid{grid-template-columns:minmax(0,1fr)}
+  body.side-closed #side{display:flex;margin-bottom:0}
+  body:not(.disp-open) #disp{display:flex;margin-top:20px}
+  #disp{order:3;margin-top:20px}.content{order:2}#side{order:1;margin-bottom:20px}}
+.side-h{display:flex;align-items:center;justify-content:space-between;padding:0 4px 0 2px}
+.map{height:440px;width:100%;border:1px solid var(--line);border-radius:4px;position:relative;z-index:0;isolation:isolate;background:var(--bg)}
+.map.map-nobase{background:var(--panel)}
+.map .leaflet-control-layers{font-family:var(--f-body);font-size:12.5px}
+.poste-ico{background:none;border:0}
+.poste-ico svg{overflow:visible;display:block;cursor:pointer}
+.poste-ico:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+.commune-lbl{background:none;border:0}
+.commune-lbl .cl{display:inline-block;white-space:nowrap;transform:translate(-50%,-50%);padding:2px 4px;border-radius:2px;background:var(--panel);font-family:var(--f-body);font-weight:700;font-size:11px;color:var(--ink);pointer-events:none}
+.map-note{position:absolute;left:8px;bottom:22px;z-index:800;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:3px 8px;font-size:12px;color:var(--ink-2)}
+
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--panel);font-size:12.5px;padding:7px 9px;border-radius:3px;z-index:20;font-variant-numeric:tabular-nums;line-height:1.4;max-width:260px}
+.plate{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--ink);padding:1px 5px;border-radius:2px;background:var(--panel)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line-2);vertical-align:top}
+th{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+td.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.tbl{overflow-x:auto}
+.foot{margin-top:28px;color:var(--ink-3);font-size:12.5px;display:flex;flex-wrap:wrap;gap:6px 18px}
+/* démo */
+body:not(.demo-on) .demo-only{display:none!important}
+.ds-bar{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 22px;align-items:center;background:var(--ink);color:var(--panel);border-radius:0 0 4px 4px;padding:14px 18px}
+.ds-steps{list-style:none;margin:0;padding:0;display:flex;gap:6px}
+.ds-steps button,.ds-nav button{background:transparent;border:1px solid currentColor;color:inherit;border-radius:2px;cursor:pointer;font-weight:700}
+.ds-steps button{width:32px;height:32px;font-family:var(--f-mono);font-weight:500;font-size:14px;opacity:.55}
+.ds-steps button.vu{opacity:.8}
+.ds-steps button[aria-current="step"]{background:var(--panel);color:var(--ink);border-color:var(--panel);opacity:1}
+.ds-bar h2{font-size:24px;color:var(--panel)}
+.ds-bar p{margin:3px 0 0;font-size:18px;line-height:1.35;opacity:.92;max-width:80ch}
+.ds-nav{display:flex;gap:6px}
+.ds-nav button{padding:7px 14px;font-size:17px}
+.ds-bar button:focus-visible{outline-color:var(--panel)}
+.ds-figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.ds-fig{padding:16px 20px 18px;border-right:1px solid var(--line-2);display:flex;flex-direction:column;gap:6px;min-width:0}
+.ds-fig:last-child{border-right:0}
+.ds-fig .v{font-family:var(--f-display);font-stretch:87.5%;font-weight:700;font-size:clamp(44px,4.4vw,64px);line-height:1;font-variant-numeric:tabular-nums;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:.12em}
+.ds-fig .d{font-size:16px;font-weight:700;color:var(--ink)}
+.ds-fig .r{font-size:15px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.ds-fig .pill{font-size:15px}
+@media (max-width:900px){.ds-bar{grid-template-columns:minmax(0,1fr) auto}.ds-bar>div:nth-child(2){grid-column:1/-1;grid-row:2}}
+/* mode projection (touche P) : texte de base 18 px, réglages repliés, petits textes agrandis d'autant */
+body.projection{font-size:18px}
+body.projection .label,body.projection .sec-h,body.projection th{font-size:13.5px}
+body.projection .kpi .r,body.projection .pill,body.projection .note,body.projection .card-h p,body.projection .legend,body.projection .hint,body.projection .map-help{font-size:15px}
+body.projection .kpis .kpi .v{font-size:clamp(32px,3vw,46px)}
+body.projection .oneline{font-size:18px}
+body.projection .card-h h2{font-size:23px}
+body.projection .ds-bar h2{font-size:27px}
+body.projection .ds-bar p{font-size:20px}
+body.projection .commune-lbl .cl{font-size:13px}
+.proj-btn[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.hl{outline:3px solid var(--seuil);outline-offset:-3px;transition:outline-color .2s}
+.expert-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}
+.pform{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px 18px}
+.pf{display:flex;flex-direction:column;gap:3px}
+.pf label{font-size:13px;font-weight:700}
+.pf .in{display:flex;gap:6px;align-items:center}
+.pf input[type=number]{width:110px;border:1px solid var(--line);border-radius:3px;padding:4px 6px;background:var(--panel);font-family:var(--f-mono)}
+.pf input.mod{border-color:var(--accent);background:var(--accent-weak)}
+.pf small{color:var(--ink-3);font-size:12px}
+.grp{grid-column:1/-1;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.note{font-size:12.5px;color:var(--ink-3)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+<header>
+  <div class="brand"><h1>Mauges Communauté : <span>jusqu'où développer le solaire et l'éolien ?</span></h1></div>
+  <div class="tabs" role="tablist" aria-label="Vue">
+    <button role="tab" id="t-elu" aria-selected="true">Élu</button>
+    <button role="tab" id="t-demo" aria-selected="false">Démo</button>
+    <button role="tab" id="t-expert" aria-selected="false">Expert</button>
+  </div>
+  <div class="hdr-right">
+    <button type="button" class="iconbtn proj-btn" id="proj" aria-pressed="false" aria-keyshortcuts="P" title="Mode projection : texte agrandi, réglages repliés (touche P)">Projection</button>
+    <div class="year-pick">
+    <label class="label" for="annee">Année météo</label>
+    <select id="annee"></select>
+    </div>
+  </div>
+</header>
+
+<div class="grid">
+<div class="rail-tools" aria-label="Ouvrir ou replier les barres latérales">
+  <button type="button" id="side-toggle" aria-expanded="true" aria-controls="side" aria-label="Replier les réglages" title="Replier les réglages"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path id="side-chevron" d="M10 3L5 8l5 5"/></svg></button>
+  <button type="button" id="menu-toggle" aria-expanded="false" aria-controls="disp" aria-label="Afficher les éléments" title="Afficher les éléments"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><path id="menu-chevron" d="M0 0" hidden/></svg></button>
+</div>
+<aside id="side" aria-label="Réglages du simulateur">
+  <div class="side-h"><span class="label">Réglages</span></div>
+  <section class="panel" aria-label="Scénarios">
+    <span class="label">Scénarios</span>
+    <select id="presets" aria-label="Choisir un scénario"></select>
+    <p class="note" id="preset_desc"></p>
+    <button type="button" class="linkbtn" id="copier-lien">Copier le lien du scénario</button>
+  </section>
+  <section class="panel" aria-label="Production">
+    <span class="label">Production</span>
+    <div class="ctl"><div class="ctl-h"><b>Solaire</b><span class="ctl-v" id="v-pv"></span></div>
+      <input type="range" id="m_pv" min="0" max="4" step="0.05" aria-label="Multiplicateur du parc solaire">
+      <div class="ticks" id="tk-pv"></div></div>
+    <div class="ctl"><div class="ctl-h"><b>Éolien</b><span class="ctl-v" id="v-eol"></span></div>
+      <input type="range" id="m_eol" min="0" max="3" step="0.05" aria-label="Multiplicateur du parc éolien">
+      <div class="ticks" id="tk-eol"></div></div>
+  </section>
+  <section class="panel" aria-label="Solutions">
+    <span class="label">Solutions</span>
+    <div class="sol"><div class="sol-h"><span class="sw" style="background:var(--s-bat)"></span><b>Batterie</b>
+      <label class="switch"><input type="checkbox" id="bat_on" aria-label="Activer la batterie"><span></span></label></div>
+      <div class="sub" id="bat_sub">
+        <div class="seg" id="bat_pil"><button data-v="glouton">Stocker tout surplus</button><button data-v="pointe">Seulement les excès</button></div>
+        <div class="ctl"><div class="ctl-h"><b>Taille</b><span class="ctl-v" id="v-bat"></span></div>
+          <input type="range" id="bat_puissance" min="0.05" max="2" step="0.05" aria-label="Puissance de la batterie"></div>
+        <button class="linkbtn" id="bat_min">Taille minimale pour tenir 5 %</button>
+      </div></div>
+    <div class="sol"><div class="sol-h"><span class="sw" style="background:var(--s-ecs)"></span><b>Ballons d'eau chaude à midi</b>
+      <span class="ctl-v" id="v-ecs"></span></div>
+      <input type="range" id="ecs_deplace" min="0" max="1" step="0.05" aria-label="Part des ballons déplacés vers la journée">
+      <small class="note">Chauffe déplacée de la nuit vers 10 h-17 h, sur les surplus.</small></div>
+    <div class="sol"><div class="sol-h"><span class="sw" style="background:var(--s-ve)"></span><b>Recharge des VE pilotée</b>
+      <span class="ctl-v" id="v-ve"></span></div>
+      <input type="range" id="ve_pilote" min="0" max="0.7" step="0.01" aria-label="Part des véhicules électriques pilotés">
+      <small class="note" id="ve_note">Actif à l'horizon 2035.</small></div>
+    <div class="sol"><div class="sol-h"><span class="sw" style="background:var(--s-pv)"></span><b>Plafond d'injection solaire</b>
+      <span class="ctl-v" id="v-plaf"></span></div>
+      <input type="range" id="pv_plafond" min="0.4" max="1" step="0.05" aria-label="Plafond d'injection solaire en part de la puissance"></div>
+  </section>
+  <section class="panel" aria-label="Horizon">
+    <span class="label">Consommation</span>
+    <div class="seg" id="horizon"><button data-v="actuel">Aujourd'hui</button><button data-v="2035">2035 électrifié</button></div>
+    <small class="note" id="hz_note"></small>
+  </section>
+</aside>
+
+<div class="content">
+<main id="v-elu">
+  <div class="ds-bar demo-only" id="demo" role="region" aria-label="Parcours de démonstration">
+      <ol class="ds-steps" id="demo-steps" aria-label="Étapes"></ol>
+      <div><h2 id="demo-h"></h2><p id="demo-p" aria-live="polite"></p></div>
+      <div class="ds-nav"><button id="demo-prev" aria-label="Étape précédente" aria-keyshortcuts="ArrowLeft">←</button><button id="demo-next" aria-label="Étape suivante" aria-keyshortcuts="ArrowRight">→</button></div>
+  </div>
+  <div class="panel ds-figs demo-only" id="demo-figs"></div>
+  <p class="bandeau" id="lien-note" role="status" hidden><span id="lien-txt"></span> <button type="button" class="iconbtn" id="lien-ok">Compris</button></p>
+  <section id="b-resume" aria-labelledby="h-resume"><h2 class="sec-h" id="h-resume">Résumé du scénario</h2><p class="oneline" id="oneline"></p></section>
+  <section id="b-kpis" aria-labelledby="h-kpis">
+    <div class="sec-bar"><h2 class="sec-h" id="h-kpis">Indicateurs clés</h2></div>
+    <div class="panel kpis" id="kpis"></div>
+    <div class="kpis-off" id="kpis-off" aria-label="Indicateurs masqués"></div>
+  </section>
+  <section id="b-verdict" aria-labelledby="h-verdict"><h2 class="sec-h" id="h-verdict">Verdict</h2><div class="panel verdict" id="verdict" aria-live="polite"></div></section>
+  <div class="row2">
+    <div class="panel card" id="b-jour"><div class="card-h"><div><h2>Une journée type</h2><p id="jt-sub"></p></div>
+      <div class="seg" id="saison" style="min-width:160px"><button data-v="hiver">Hiver</button><button data-v="ete">Été</button></div></div>
+      <div class="ec" id="c-jour" style="height:300px" role="img" aria-label="Journée type : production, consommation et seuil de vigilance"></div>
+      <div class="legend" id="lg-jour"></div></div>
+    <div class="panel card" id="b-carte"><div class="card-h"><div><h2>Où raccorder ?</h2><p>Postes sources et capacité S3REnR restante après le scénario</p></div>
+      <div class="maptogs">
+        <div class="maptog"><span id="postes_lbl">Postes sources</span><label class="switch"><input type="checkbox" id="postes_on" checked aria-labelledby="postes_lbl"><span></span></label>
+          <button type="button" class="map-info" aria-expanded="false" aria-controls="postes-info" aria-label="Comment est estimée la charge des postes sources ?" title="Comment est estimée la charge des postes sources ?"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></div>
+        <div class="maptog"><span id="ori_lbl">Projets orientés vers les postes libres</span><label class="switch"><input type="checkbox" id="ori_on" aria-labelledby="ori_lbl"><span></span></label>
+          <button type="button" class="map-info" aria-expanded="false" aria-controls="ori-info" aria-label="Que change la lecture « projets orientés » ?" title="Que change la lecture « projets orientés » ?"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></div>
+        <div class="maptog"><span id="dens_lbl">Densité ENR (MW/km²)</span><label class="switch"><input type="checkbox" id="dens_on" aria-labelledby="dens_lbl"><span></span></label>
+          <button type="button" class="map-info" aria-expanded="false" aria-controls="dens-info" aria-label="Qu'indique la densité ENR ?" title="Qu'indique la densité ENR ?"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></div>
+      </div></div>
+      <p class="map-help" id="postes-info" hidden>L'ajout estimé par poste = max(0, (multiplicateur solaire − 1) × PV déjà raccordé + (multiplicateur éolien − 1) × éolien déjà raccordé). Le taux projeté = (capacité réservée − capacité restante + ajout estimé) / capacité réservée. La carte signale les postes au-dessus de 90 % et ceux dépassant 100 %. C'est une estimation proportionnelle au parc existant, pas une étude de flux électrique ni une garantie de raccordement.</p>
+      <p class="map-help" id="ori-info" hidden>Par défaut, chaque poste reçoit l'extension de son propre parc (lecture « à l'identique ») : certains postes saturent. Avec les projets orientés, la puissance totale à raccorder (solaire et éolien ajoutés) est répartie entre les postes au prorata de leur capacité S3REnR restante (Caparéseau) : un dépassement n'apparaît que si l'ajout total excède la capacité restante du territoire. Même lecture que la contrainte « postes » des trajectoires.</p>
+      <p class="map-help" id="dens-info" hidden>La densité correspond à la puissance solaire et éolienne du scénario dans chaque commune, divisée par sa surface communale brute, en MW/km². Elle indique la concentration des capacités, sans tenir compte des contraintes foncières.</p>
+      <div class="map" id="c-carte" role="region" aria-label="Carte des communes et des postes sources"></div>
+      <div class="legend" id="lg-carte"></div></div>
+  </div>
+  <div class="panel card" id="b-mois"><div class="card-h"><div><h2>Bilan mois par mois</h2><p id="bm-sub"></p></div></div>
+    <div class="ec" id="c-mois" style="height:280px" role="img" aria-label="Bilan mensuel"></div>
+    <div class="legend" id="lg-mois"></div></div>
+</main>
+
+<main id="v-expert" hidden>
+  <div class="panel card" id="b-heures"><div class="card-h"><div><h2>Deux semaines heure par heure</h2><p id="hx-sub"></p></div>
+    <div class="ctl" style="min-width:240px"><div class="ctl-h"><b>Début</b><span class="ctl-v" id="v-sem"></span></div>
+      <input type="range" id="semaine" min="0" max="50" step="1" value="27" aria-label="Semaine affichée"></div></div>
+    <div class="ec" id="c-heures" style="height:360px" role="img" aria-label="Production et consommation heure par heure, et état de charge de la batterie"></div>
+    <p class="note" id="c-soc" hidden>Pas de batterie dans ce scénario.</p>
+    <div class="legend" id="lg-heures"></div>
+    <p class="hint">Ctrl + molette, pincement ou barre du bas pour zoomer ; glisser pour se déplacer dans la zone zoomée.</p></div>
+  <div class="panel card" id="b-mono"><div class="card-h"><div><h2>Monotones</h2><p id="mono-sub"></p></div></div>
+    <div class="ec" id="c-mono" style="height:320px" role="img" aria-label="Monotones de la consommation et de l'injection nette"></div>
+    <div class="legend" id="lg-mono"></div>
+    <p class="hint">Chaque courbe range les 8 760 heures de l'année de la plus forte à la plus faible. Injection nette = production − consommation − charge + décharge de la batterie ; négative, c'est un appel au réseau.</p></div>
+  <div class="panel card" id="b-traj"><div class="card-h"><div><h2>Trajectoires : jusqu'où développer ?</h2>
+      <p>Taux de couverture (heure par heure), moyenne 2021-2025, pour chaque combinaison de solaire et d'éolien. Cliquer une case applique le scénario.</p></div>
+    <div class="ctl-row"><div class="seg" id="traj-paquet" role="group" aria-label="Solutions"><button data-v="P0 aucune">Aucune</button><button data-v="P1 ballons">Ballons</button><button data-v="P2 batterie">Batterie</button><button data-v="P3 ballons + batterie">Ballons + batterie</button></div>
+      <div class="seg" id="traj-hz" role="group" aria-label="Consommation"><button data-v="actuel">Aujourd'hui</button><button data-v="2035">2035</button></div></div></div>
+    <div class="ec" id="c-traj" style="height:360px" role="img" aria-label="Carte de chaleur du taux de couverture selon le solaire et l'éolien"></div>
+    <div class="legend" id="lg-traj"></div>
+    <p class="hint" id="traj-note"></p></div>
+  <div class="panel card" id="b-tornade"><div class="card-h"><div><h2>Sensibilité des résultats</h2>
+      <p>Écart au scénario de référence quand une seule hypothèse prend sa valeur basse ou haute. <span id="torn-sub"></span></p></div>
+    <div class="ctl-row"><div class="seg" id="torn-sc" role="group" aria-label="Scénario de référence"><button data-v="B">B + batterie</button><button data-v="C">C + batterie</button></div>
+      <div class="seg" id="torn-hz" role="group" aria-label="Consommation"><button data-v="actuel">Aujourd'hui</button><button data-v="2035">2035</button></div>
+      <div class="seg" id="torn-ind" role="group" aria-label="Indicateur"><button data-v="couverture_horaire">Taux de couverture</button><button data-v="ecretement_part">Écrêtement</button></div></div></div>
+    <div class="ec" id="c-tornade" style="height:380px" role="img" aria-label="Tornade : effet de chaque hypothèse sur l'indicateur choisi"></div>
+    <div class="legend" id="lg-tornade"></div>
+    <p class="hint">Source : précalcul Python (12_tornade.py), moyennes 2021-2025. Les hypothèses de batterie ne s'appliquent qu'aux scénarios avec batterie.</p></div>
+  <div class="panel card" id="b-hyp"><div class="card-h"><div><h2>Toutes les hypothèses</h2><p>Formulaire généré depuis le schéma des paramètres exporté par Python (valeur, bornes, unité, source). Les valeurs modifiées sont surlignées.</p></div>
+    <button class="linkbtn" id="reset">Tout réinitialiser</button></div>
+    <div class="pform" id="pform"></div></div>
+  <div class="panel card" id="b-methode"><div class="card-h"><div><h2>Méthode et sources</h2><p id="meth-sub"></p></div></div>
+    <div class="meth">
+      <section><h3>Traitement des données</h3>
+        <ol class="meth-etapes">
+          <li><b>Collecte.</b> Consommation annuelle des Mauges (ODRÉ, par EPCI), courbes régionales au pas 30 min (RTE Eco2Mix, Enedis), registre des installations au 31/12/2025 (ODRÉ), températures (Météo-France), postes sources (Caparéseau), population et logements (INSEE).</li>
+          <li><b>Pas horaire.</b> Séries converties en UTC, moyennées (puissances) ou sommées (énergies) par heure ; trous de 2 h au plus interpolés, au-delà signalés.</li>
+          <li><b>Volumes annuels.</b> Consommation mesurée 2021-2024 ; 2025 estimée en suivant l'évolution régionale ; parts sectorielles moyennes 2021-2023.</li>
+          <li><b>Forme horaire de la consommation.</b> Profil régional (2021-2023) ou profils sectoriels Enedis (2024-2025) ; la part raccordée au réseau de transport (RTE) en profil plat.</li>
+          <li><b>Production.</b> Facteurs de charge régionaux calibrés sur la production réelle du parc local (solaire × 0,867, éolien × 0,833) ; parc au 31/12/2025 appliqué aux cinq années météo.</li>
+          <li><b>Contrôles et export.</b> 13 contrôles de cohérence, moteur de référence Python, puis export du paquet de données et des 135 cas de référence qui valident ce simulateur.</li>
+        </ol></section>
+      <section><h3>Limites du modèle</h3>
+        <ul class="meth-limites">
+          <li>Consommation reconstruite : volume local mesuré, forme horaire régionale.</li>
+          <li>Production calibrée sur le registre des installations.</li>
+          <li>Batterie pilotée par des règles simples, sans optimisation.</li>
+          <li>Flexibilités (ballons, VE) placées jour par jour, sans report d'un jour sur l'autre.</li>
+          <li>Pompes à chaleur à COP constant.</li>
+          <li>Réseau non modélisé au-delà des postes sources ; capacités S3REnR partagées avec les territoires voisins.</li>
+          <li>Économie simplifiée : base officielle (NREL 2025, RTE, CRE), fiche Projet 6 en sensibilité.</li>
+        </ul></section>
+    </div>
+    <details class="meth-hyp" open><summary><h3>Hypothèses du simulateur (<span id="meth-n"></span>)</h3></summary>
+      <div class="tbl"><table id="t-hyp"></table></div></details></div>
+  <div class="panel card" id="b-annees"><div class="card-h"><div><h2>Indicateurs 2021-2025</h2><p>Chaque année météo simulée séparément, sans moyenner les profils</p></div>
+    <div class="ctl-row export" role="group" aria-label="Exporter"><span class="r">Exporter :</span><button type="button" class="iconbtn" id="exp-ind">Indicateurs 2021-2025 (CSV)</button><button type="button" class="iconbtn" id="exp-h">Série horaire <span id="exp-an"></span> (CSV)</button><button type="button" class="iconbtn" id="exp-json">Paramètres (JSON)</button></div></div>
+    <div class="tbl"><table id="t-annees"></table></div></div>
+</main>
+</div>
+<aside id="disp" class="rside" aria-label="Éléments affichés">
+  <div class="side-h"><span class="label">Affichage</span></div>
+  <section class="panel dpanel"><p class="note">Cochez les éléments à afficher sur la page.</p>
+    <div id="menu-body"></div>
+    <div class="df"><button class="iconbtn" id="menu-all">Tout afficher</button><button class="iconbtn" id="menu-none">Tout masquer</button></div></section>
+</aside>
+</div>
+<div class="foot">
+  <span>Outil pédagogique — projet étudiant ESIEE Paris, 2026. Moteur de calcul validé sur 135 cas de référence (Python ↔ JavaScript), données horaires 2021-2025 embarquées, fonctionne hors ligne.</span>
+  <span>Sources : ODRÉ, Enedis, RTE Eco2Mix, Météo-France, INSEE, Caparéseau. Économie : NREL 2025, RTE, CRE (Projet 6 en sensibilité).</span>
+  <span>Fond de carte : Esri / OpenStreetMap contributeurs (sélecteur sur la carte), via Leaflet. Contours des communes : IGN/INSEE.</span>
+</div>
+<nav class="bottom-controls" id="bottom-controls" aria-label="Commandes de navigation et année météo (rappel)" hidden inert>
+  <div class="tabs" role="tablist" aria-label="Vue">
+    <button role="tab" id="tb-elu" aria-selected="true">Élu</button>
+    <button role="tab" id="tb-demo" aria-selected="false">Démo</button>
+    <button role="tab" id="tb-expert" aria-selected="false">Expert</button>
+  </div>
+  <div class="year-pick">
+    <label class="label" for="annee-bottom">Année météo</label>
+    <select id="annee-bottom"></select>
+  </div>
+</nav>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script src="data.js"></script>
+<script src="precalcul.js"></script>
+<script>
+const MOTEUR = (function(){
+// moteur.mjs — Portage JavaScript de référence de donnees/scripts/moteur_ref.py (validé sur tests/golden.json).
+// Sert (1) de spécification exécutable pour le moteur TypeScript du simulateur, (2) de moteur à la maquette.
+// Conventions : pas horaire, 1 MW = 1 MWh/h ; tableaux Float64Array ; aucune allocation dans la boucle batterie.
+
+// Tolérance (MW) du comptage des heures de vigilance : en pilotage « pointe », P − ch vaut exactement s·C (audit 21/10/2026).
+const TOL_SEUIL = 1e-6;
+
+function chargerAnnee(buffer, n, colonnes, constantes) {
+  const f32 = new Float32Array(buffer);
+  const col = (nom) => Float64Array.from(f32.subarray(colonnes.indexOf(nom) * n, (colonnes.indexOf(nom) + 1) * n));
+  const a = { n, fc_pv: col("fc_pv"), fc_eol: col("fc_eol"), autres: col("autres"), c_reel: col("c_reel"), temp: col("temp"),
+              heure: Int32Array.from(col("heure")), jour: Int32Array.from(col("jour")), doy: Int32Array.from(col("doy")), const: constantes };
+  a.nJours = 0; for (let i = 0; i < n; i++) if (a.jour[i] + 1 > a.nJours) a.nJours = a.jour[i] + 1;
+  let s = 0; for (let i = 0; i < n; i++) s += a.c_reel[i]; a.sommeC = s;
+  return a;
+}
+
+const masque = (heure, [a, b]) => {
+  const m = new Uint8Array(heure.length);
+  for (let i = 0; i < heure.length; i++) { const h = heure[i]; m[i] = a < b ? (h >= a && h < b) : (h >= a || h < b); }
+  return m;
+};
+
+function repartirParJour(an, eJour, m) {
+  const nb = new Float64Array(an.nJours), out = new Float64Array(an.n);
+  for (let i = 0; i < an.n; i++) nb[an.jour[i]] += m[i];
+  for (let i = 0; i < an.n; i++) if (m[i]) out[i] = eJour[an.jour[i]] / Math.max(nb[an.jour[i]], 1);
+  return out;
+}
+
+function profilVeNonPilote(an, eJour, d, P) {
+  const arr = new Float64Array(24);
+  let [a, b] = P.VE_ARRIVEE_SOIR; for (let h = a; h < b; h++) arr[h] += P.VE_PART_SOIR / (b - a);
+  [a, b] = P.VE_ARRIVEE_JOUR; for (let h = a; h < b; h++) arr[h] += (1 - P.VE_PART_SOIR) / (b - a);
+  const nk = Math.ceil(d) + 1, noyau = new Float64Array(nk); let sk = 0;
+  for (let k = 0; k < nk; k++) { noyau[k] = Math.max(0, Math.min(1, d - k)); sk += noyau[k]; }
+  for (let k = 0; k < nk; k++) noyau[k] /= sk;
+  const prof = new Float64Array(48 + nk);
+  for (let h = 0; h < 24; h++) for (let k = 0; k < nk; k++) prof[h + k] += arr[h] * noyau[k];
+  const p24 = new Float64Array(24); let s = 0;
+  for (let h = 0; h < 24; h++) { p24[h] = prof[h] + prof[h + 24]; s += p24[h]; }
+  const out = new Float64Array(an.n);
+  for (let i = 0; i < an.n; i++) out[i] = eJour[an.jour[i]] * p24[an.heure[i]] / s;
+  return out;
+}
+
+function remplirSurplus(an, surplus, eJour, pMax, fenetre) {
+  const alloc = new Float64Array(an.n), reste = Float64Array.from(eJour), m = masque(an.heure, fenetre), idx = [];
+  for (let i = 0; i < an.n; i++) if (m[i] && surplus[i] > 0) idx.push(i);
+  idx.sort((i, j) => (an.jour[i] - an.jour[j]) || (surplus[j] - surplus[i]) || (i - j)); // = np.lexsort((-surplus, jour)), stable
+  for (const i of idx) {
+    const j = an.jour[i]; if (reste[j] <= 0) continue;
+    const x = Math.min(surplus[i], pMax, reste[j]); alloc[i] = x; reste[j] -= x;
+  }
+  return { alloc, reste };
+}
+
+function batterie(P, C, E, Pb, rdt, soc0, pilotage, seuil) {
+  const n = P.length, ch = new Float64Array(n), dch = new Float64Array(n), soc = new Float64Array(n);
+  if (E <= 0 || pilotage === "aucune") return { ch, dch, soc };
+  const eta = Math.sqrt(rdt), k = pilotage === "pointe" ? seuil : 1.0; let s = soc0 * E;
+  for (let h = 0; h < n; h++) {
+    const net = P[h] - C[h];
+    if (net > 0) { const x = Math.min(Math.max(P[h] - k * C[h], 0), Pb, (E - s) / eta); ch[h] = x; s += x * eta; }
+    else if (net < 0) { const x = Math.min(-net, Pb, s * eta); dch[h] = x; s -= x / eta; }
+    soc[h] = s;
+  }
+  return { ch, dch, soc };
+}
+
+function simuler(an, pIn, defauts, profils, avecSeries = false) {
+  const p = { ...defauts, ...pIn }, k = an.const, n = an.n, nJ = an.nJours;
+  // 1. production
+  const PcPv = p.m_pv * k.Ppv_A, P = new Float64Array(n), pv = new Float64Array(n), eol = new Float64Array(n);
+  let ecretStat = 0, Pbrut = 0;
+  for (let i = 0; i < n; i++) {
+    const brut = PcPv * an.fc_pv[i]; pv[i] = Math.min(brut, p.pv_plafond * PcPv); ecretStat += brut - pv[i];
+    eol[i] = p.m_eol * k.Peol_A * an.fc_eol[i]; P[i] = pv[i] + eol[i] + an.autres[i]; Pbrut += brut + eol[i] + an.autres[i];
+  }
+  // 2. consommation
+  const C0 = new Float64Array(n); const fv = p.variante_conso === "vol2024" ? k.conso_2024_MWh / an.sommeC : 1;
+  for (let i = 0; i < n; i++) C0[i] = an.c_reel[i] * fv;
+  let cPac = new Float64Array(n), cVeNp = new Float64Array(n), cVeTar = new Float64Array(n), eVePil = new Float64Array(nJ), nVe = 0, nPac = 0;
+  if (p.horizon === "2035") {
+    const f = k.part_residentiel * p.pop_facteur * (1 - p.renovation) + k.part_tertiaire * p.pop_facteur + (1 - k.part_residentiel - k.part_tertiaire);
+    for (let i = 0; i < n; i++) C0[i] *= f;
+    nPac = Math.min(p.pac_part * k.residences_principales_2023 * p.pop_facteur, k.logements_fossiles_2023);
+    const G = p.besoin_chauffage / k.degres_heures_16_moyen;
+    for (let i = 0; i < n; i++) cPac[i] = nPac * G * Math.max(0, p.t_base_chauffage - an.temp[i]) / p.pac_cop;
+    nVe = p.part_ve * k.voitures_menages_2023 * p.pop_facteur;
+    const eVe = nVe * p.km_jour * p.conso_ve / 100 / p.rdt_recharge / 1000, partTar = Math.max(0, 1 - p.ve_non_pilote - p.ve_pilote);
+    const dCharge = (p.km_jour * p.conso_ve / 100 / p.rdt_recharge) / p.p_borne;
+    cVeNp = profilVeNonPilote(an, new Float64Array(nJ).fill(eVe * p.ve_non_pilote), dCharge, profils);
+    cVeTar = repartirParJour(an, new Float64Array(nJ).fill(eVe * partTar), masque(an.heure, profils.HC_NUIT));
+    eVePil.fill(eVe * p.ve_pilote);
+  }
+  const C1 = new Float64Array(n); for (let i = 0; i < n; i++) C1[i] = C0[i] + cPac[i] + cVeNp[i] + cVeTar[i];
+  // 3. flexibilités
+  let cVePil = new Float64Array(n), sPil = 0; for (let j = 0; j < nJ; j++) sPil += eVePil[j];
+  if (sPil > 0) {
+    const nPil = nVe * p.ve_pilote, jourE = eVePil.map((e) => e * p.ve_dispo_journee), surplus = new Float64Array(n);
+    for (let i = 0; i < n; i++) surplus[i] = P[i] - C1[i];
+    const { alloc, reste } = remplirSurplus(an, surplus, jourE, nPil * p.p_borne / 1000, profils.FENETRE_JOUR);
+    const nuitE = new Float64Array(nJ); for (let j = 0; j < nJ; j++) nuitE[j] = eVePil[j] * (1 - p.ve_dispo_journee) + reste[j];
+    const nuit = repartirParJour(an, nuitE, masque(an.heure, profils.HC_NUIT));
+    for (let i = 0; i < n; i++) cVePil[i] = alloc[i] + nuit[i];
+  }
+  const C2 = new Float64Array(n); for (let i = 0; i < n; i++) C2[i] = C1[i] + cVePil[i];
+  let ecsR = new Float64Array(n), ecsA = new Float64Array(n);
+  if (p.ecs_deplace > 0) {
+    const nEcs = p.ecs_part * k.residences_principales_2023 * (p.horizon === "2035" ? p.pop_facteur : 1) * p.ecs_deplace;
+    const sd = new Float64Array(nJ), cnt = new Float64Array(nJ);
+    for (let i = 0; i < n; i++) { sd[an.jour[i]] += an.doy[i]; cnt[an.jour[i]] += 1; }
+    const eJ = new Float64Array(nJ);
+    for (let j = 0; j < nJ; j++) eJ[j] = nEcs * p.ecs_conso / 365 * (1 + profils.ECS_SAISON * Math.cos(2 * Math.PI * (sd[j] / Math.max(cnt[j], 1) - 15) / 365));
+    ecsR = repartirParJour(an, eJ, masque(an.heure, profils.ECS_NUIT));
+    const surplus = new Float64Array(n); for (let i = 0; i < n; i++) surplus[i] = P[i] - C2[i];
+    const { alloc, reste } = remplirSurplus(an, surplus, eJ, nEcs * p.ecs_p / 1000, profils.ECS_JOUR);
+    const rep = repartirParJour(an, reste, masque(an.heure, profils.ECS_NUIT));
+    for (let i = 0; i < n; i++) ecsA[i] = alloc[i] + rep[i];
+  }
+  const C = new Float64Array(n); for (let i = 0; i < n; i++) C[i] = C2[i] - ecsR[i] + ecsA[i];
+  // 4. batterie
+  const E = p.bat_pilotage !== "aucune" ? p.bat_puissance * PcPv * p.bat_duree : 0, Pb = p.bat_puissance * PcPv;
+  const { ch, dch, soc } = batterie(P, C, E, Pb, p.bat_rdt, p.bat_soc0, p.bat_pilotage, p.seuil_vigilance);
+  // 5. indicateurs
+  let sP = 0, sC = 0, auto = 0, exp = 0, imp = 0, injMax = -Infinity, cMax = -Infinity, soutMax = -Infinity, hv = 0, ecretDyn = 0, sDch = 0, veAbs = 0, sPac = 0, sVe = 0, sEcs = 0;
+  const inj = avecSeries ? new Float64Array(n) : null;
+  for (let i = 0; i < n; i++) {
+    const d = Math.min(P[i], C[i]); sP += P[i]; sC += C[i]; auto += d + dch[i];
+    exp += Math.max(P[i] - C[i], 0) - ch[i]; imp += Math.max(C[i] - P[i], 0) - dch[i];
+    const x = P[i] - C[i] - ch[i] + dch[i]; if (inj) inj[i] = x;
+    if (x > injMax) injMax = x; if (-x > soutMax) soutMax = -x; if (C[i] > cMax) cMax = C[i];
+    if (P[i] - ch[i] > p.seuil_vigilance * C[i] + TOL_SEUIL) hv++;
+    ecretDyn += Math.max(x - (p.seuil_vigilance - 1) * C[i], 0); sDch += dch[i];
+    veAbs += Math.min(cVePil[i], Math.max(P[i] - C1[i], 0)); sPac += cPac[i]; sVe += cVeNp[i] + cVeTar[i] + cVePil[i]; sEcs += ecsR[i];
+  }
+  const ecret = ecretStat + ecretDyn;
+  const fa = p.taux_actu > 0 ? (1 - Math.pow(1 + p.taux_actu, -p.duree_analyse)) / p.taux_actu : p.duree_analyse;
+  const r = {
+    production_MWh: sP, production_brute_MWh: Pbrut, consommation_MWh: sC, couverture: sP / sC, couverture_horaire: auto / sC,
+    autoconso_MWh: auto, surplus_exporte_MWh: exp, deficit_importe_MWh: imp, pointe_injection_MW: injMax, pointe_conso_MW: cMax,
+    pointe_soutirage_MW: soutMax, heures_vigilance: hv, ecretement_statique_MWh: ecretStat, ecretement_dynamique_MWh: ecretDyn,
+    ecretement_MWh: ecret, ecretement_part: ecret / Pbrut, conforme: ecret / Pbrut <= p.ecretement_max + 1e-12,
+    bat_energie_MWh: E, bat_decharge_MWh: sDch, bat_cycles: E ? sDch / E : 0, ve_nb: nVe, pac_nb: nPac, conso_pac_MWh: sPac,
+    conso_ve_MWh: sVe, ve_surplus_absorbe_MWh: veAbs, ecs_deplace_MWh: sEcs,
+    valeur_annuelle_EUR: 1000 * (-imp * p.prix_achat + (exp - ecretDyn) * p.prix_surplus), capex_batterie_EUR: E * 1000 * p.cout_bat, om_annuel_EUR: E > 0 ? Pb * 1000 * p.om_bat : 0, facteur_annuite: fa,
+  };
+  if (avecSeries) r.series = { P, C, C0, pac: cPac, ve_np: cVeNp, ve_tar: cVeTar, ve_pil: cVePil, ecs_retire: ecsR, ecs_ajoute: ecsA, ch, dch, soc, inj, pv, eol };
+  return r;
+}
+
+return { chargerAnnee, simuler, batterie };
+})();
+</script>
+<script>
+(function(){
+const $ = (s) => document.getElementById(s);
+const fr = (x, d = 1) => (x == null || !isFinite(x)) ? "–" : x.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }).replace("-", "−"); // vrai signe moins
+const DEF = Object.fromEntries(Object.entries(META.parametres).map(([k, v]) => [k, v.defaut]));
+const K = META.constantes;
+// Prix de l'électricité évitée : tarif de détail (valeur par défaut) ou prix de gros, lu dans la source du paramètre
+// (« vue prix de gros : spot moyen 2025 0,061 (RTE) ») pour n'écrire aucune hypothèse en dur.
+const PRIX = { detail: DEF.prix_achat, gros: (m => m ? +m[1].replace(",", ".") : null)(/prix de gros[^;]*?(\d+,\d+)/i.exec(META.parametres.prix_achat.source)) };
+const segPrix = () => PRIX.gros == null ? "" : `<div class="seg seg-prix" role="group" aria-label="Prix de l'électricité évitée">${[["detail", "Détail"], ["gros", "Gros"]].map(([k, t]) => `<button type="button" data-prix="${k}" aria-pressed="${Math.abs(P.prix_achat - PRIX[k]) < 1e-9}" title="${t === "Détail" ? "Tarif réglementé" : "Prix de gros (spot)"} : ${fr(PRIX[k], 3)} €/kWh">${t} ${fr(PRIX[k], 3)}</button>`).join("")}</div>`;
+document.addEventListener("click", e => { const b = e.target.closest("[data-prix]"); if (!b) return; P.prix_achat = PRIX[b.dataset.prix]; syncControls(); if (vue === "expert") syncForm(); render(); });
+// ---- données : base64 → ArrayBuffer → Annee
+const ANS = {};
+for (const a of META.annees) {
+  const s = atob(BIN[a]); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+  ANS[a] = MOTEUR.chargerAnnee(u.buffer, META.n_heures[a], META.colonnes, K);
+  const A = ANS[a]; A.mois = new Int8Array(A.n); A.ouvre = new Uint8Array(A.n);
+  for (let i = 0; i < A.n; i++) { const d = new Date(Date.UTC(+a, 0, 1 + A.jour[i])); A.mois[i] = d.getUTCMonth(); const w = d.getUTCDay(); A.ouvre[i] = (w !== 0 && w !== 6) ? 1 : 0; }
+}
+// ---- état
+let P = { ...DEF, annee: META.annee_typique }, trajSuit = true, vue = "elu", saison = "hiver", presetActif = "A", demoStep = 0;
+const PRESETS = META.presets;
+const sim = (p, a, series) => MOTEUR.simuler(ANS[a], { ...p, annee: a }, DEF, META.profils, series);
+// ---- contrôles
+// « 2021-2025 (moyenne) » : les indicateurs sont la moyenne des 5 années simulées séparément ; les courbes restent sur l'année typique.
+let moy = false;
+const MOY_TXT = `${META.annees[0]}-${META.annees[META.annees.length - 1]}`;
+const anneeSelects = [$("annee"), $("annee-bottom")];
+for (const select of anneeSelects) {
+  for (const a of META.annees) select.add(new Option(a + (a === META.annee_typique ? " (typique)" : ""), a));
+  select.add(new Option(`${MOY_TXT} (moyenne)`, "moy"));
+  select.value = META.annee_typique;
+  select.onchange = () => { moy = select.value === "moy"; P.annee = moy ? META.annee_typique : +select.value; for (const other of anneeSelects) other.value = select.value; render(); };
+}
+// Moyenne des indicateurs numériques des 5 années ; « conforme » seulement si chaque année l'est
+function moyenneAnnees(all, base) {
+  const r = { ...base };
+  for (const k of Object.keys(base)) if (typeof base[k] === "number") r[k] = all.reduce((t, x) => t + x[k], 0) / all.length;
+  r.conforme = all.every(x => x.conforme); return r;
+}
+const chips = $("presets");
+const PRESET_IDS = ["A", "B", "C", "B_batterie", "C_batterie", "reco_sobre", "reco_batterie", "2035_reference"];
+const PRESET_COURT = { A: "A · parc actuel", B: "B · solaire ×2", C: "C · solaire ×3, éolien ×1,5", B_batterie: "B + batterie", C_batterie: "C + batterie", reco_sobre: "Recommandé (sans stockage)", reco_batterie: "Recommandé + batterie", "2035_reference": "2035 électrifié" };
+for (const id of PRESET_IDS) if (PRESETS[id]) { const o = document.createElement("option"); o.value = id; o.textContent = PRESET_COURT[id]; chips.append(o); }
+{ const o = document.createElement("option"); o.value = ""; o.textContent = "Personnalisé (réglages modifiés)"; o.disabled = true; chips.append(o); }
+chips.onchange = () => { if (chips.value) appliquerPreset(chips.value); };
+function appliquerPreset(id) { P = { ...DEF, annee: P.annee, ...PRESETS[id].p }; presetActif = id; trajSuit = true; syncControls(); render(); }
+function ticks(el, max, marks) { el.innerHTML = marks.map(([v, t]) => `<span style="left:calc(${v / max * 100}% + ${8 - 16 * v / max}px)">${t}</span>`).join(""); }
+ticks($("tk-pv"), 4, [[1, "A"], [2, "B"], [3, "C"]]); ticks($("tk-eol"), 3, [[1, "A·B"], [1.5, "C"]]);
+const num = (id, key) => { const el = $(id); el.oninput = () => { P[key] = +el.value; presetActif = null; syncControls(); render(); }; };
+num("m_pv", "m_pv"); num("m_eol", "m_eol"); num("bat_puissance", "bat_puissance"); num("ecs_deplace", "ecs_deplace"); num("pv_plafond", "pv_plafond");
+$("ve_pilote").oninput = () => { P.ve_pilote = +$("ve_pilote").value; P.ve_non_pilote = Math.min(0.30, 1 - P.ve_pilote); presetActif = null; syncControls(); render(); };
+$("bat_on").onchange = () => { P.bat_pilotage = $("bat_on").checked ? (P._pil || "pointe") : "aucune"; presetActif = null; syncControls(); render(); };
+for (const b of $("bat_pil").children) b.onclick = () => { P._pil = b.dataset.v; if (P.bat_pilotage !== "aucune") P.bat_pilotage = b.dataset.v; presetActif = null; syncControls(); render(); };
+for (const b of $("horizon").children) b.onclick = () => { P.horizon = b.dataset.v; presetActif = null; syncControls(); render(); };
+for (const b of $("saison").children) b.onclick = () => { saison = b.dataset.v; syncControls(); renderJour(lastSeries); };
+$("bat_min").onclick = () => {
+  const base = { ...P, bat_pilotage: P.bat_pilotage === "aucune" ? "pointe" : P.bat_pilotage };
+  let trouve = null;
+  for (let f = 0.05; f <= 2.0001; f += 0.05) { const ok = META.annees.every(a => sim({ ...base, bat_puissance: +f.toFixed(2) }, a).conforme); if (ok) { trouve = +f.toFixed(2); break; } }
+  if (trouve === null) { $("bat_min").textContent = "Impossible même à 2 × Ppv"; setTimeout(() => $("bat_min").textContent = "Taille minimale pour tenir 5 %", 2500); return; }
+  P = { ...base, bat_puissance: trouve }; presetActif = null; syncControls(); render();
+};
+function syncControls() {
+  $("m_pv").value = P.m_pv; $("m_eol").value = P.m_eol; $("bat_puissance").value = P.bat_puissance; $("ecs_deplace").value = P.ecs_deplace;
+  $("pv_plafond").value = P.pv_plafond; $("ve_pilote").value = P.ve_pilote;
+  $("v-pv").textContent = `${fr(P.m_pv * K.Ppv_A, 0)} MW · ${P.m_pv >= 1 ? "+" : ""}${fr((P.m_pv - 1) * 100, 0)} %`;
+  $("v-eol").textContent = `${fr(P.m_eol * K.Peol_A, 0)} MW · ${P.m_eol >= 1 ? "+" : ""}${fr((P.m_eol - 1) * 100, 0)} %`;
+  const E = P.bat_puissance * P.m_pv * K.Ppv_A * P.bat_duree;
+  $("v-bat").textContent = `${fr(E, 0)} MWh · ${fr(P.bat_puissance * P.m_pv * K.Ppv_A, 0)} MW`;
+  $("v-ecs").textContent = `${fr(P.ecs_deplace * 100, 0)} %`; $("v-ve").textContent = `${fr(P.ve_pilote * 100, 0)} %`;
+  $("v-plaf").textContent = P.pv_plafond >= 1 ? "aucun" : `${fr(P.pv_plafond * 100, 0)} % de Pc`;
+  $("bat_on").checked = P.bat_pilotage !== "aucune"; $("bat_sub").hidden = P.bat_pilotage === "aucune";
+  const pil = P.bat_pilotage === "aucune" ? (P._pil || "pointe") : P.bat_pilotage;
+  for (const b of $("bat_pil").children) b.setAttribute("aria-pressed", b.dataset.v === pil);
+  for (const b of $("horizon").children) b.setAttribute("aria-pressed", b.dataset.v === P.horizon);
+  for (const b of $("saison").children) b.setAttribute("aria-pressed", b.dataset.v === saison);
+  chips.value = presetActif || ""; $("preset_desc").textContent = presetActif ? PRESETS[presetActif].libelle : "Réglages modifiés à la main : aucun scénario prédéfini ne correspond.";
+  $("ve_pilote").disabled = P.horizon !== "2035";
+  $("ve_note").textContent = P.horizon === "2035" ? "Recharge placée sur les surplus solaires (sinon heures creuses)." : "Disponible à l'horizon 2035 (VE en nombre).";
+  for (const select of anneeSelects) select.value = moy ? "moy" : P.annee;
+  // valeurs annoncées par les lecteurs d'écran : MW et %, pas le multiplicateur brut
+  for (const [id, v] of [["m_pv", "v-pv"], ["m_eol", "v-eol"], ["bat_puissance", "v-bat"], ["ecs_deplace", "v-ecs"], ["ve_pilote", "v-ve"], ["pv_plafond", "v-plaf"]]) $(id).setAttribute("aria-valuetext", $(v).textContent.replace(/ · /g, ", "));
+}
+// ---- calcul
+let lastSeries = null, lastR = null, lastAll = null, lastEco = null;
+function render() {
+  const all = META.annees.map(a => sim(P, a, a === P.annee));
+  const an = all[META.annees.indexOf(P.annee)], r = moy ? moyenneAnnees(all, an) : an;
+  const eco = ecoBatterie(r, all);
+  lastR = r; lastAll = all; lastSeries = r.series; lastEco = eco;
+  renderOneline(r); renderKpis(r, all, eco); renderVerdict(r, all, eco); renderJour(r.series); renderCarte(); renderMois(r.series);
+  if (vue === "expert") { syncForm(); renderExpert(); }
+  applyVis(); ecrireLien(); if (vue === "demo") demoRendu();
+  $("hz_note").textContent = P.horizon === "2035" ? `${fr(r.ve_nb, 0)} VE · ${fr(r.pac_nb, 0)} logements en PAC · ${fr(r.consommation_MWh / 1000, 0)} GWh/an` : `Consommation mesurée de l'année (${fr(r.consommation_MWh / 1000, 0)} GWh).`;
+}
+const rng = (all, k, f = 100, d = 1) => { const v = all.map(r => r[k] * f); return `${fr(Math.min(...v), d)}–${fr(Math.max(...v), d)}`; };
+function renderOneline(r) {
+  const sols = [];
+  const variation = f => { const pct = (f - 1) * 100; return `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${fr(Math.abs(pct), 0)} %`; };
+  if (P.bat_pilotage !== "aucune") sols.push(`batterie ${fr(r.bat_energie_MWh, 0)} MWh (${P.bat_pilotage === "pointe" ? "stocke les excès" : "stocke tout surplus"})`);
+  if (P.ecs_deplace > 0) sols.push(`${fr(P.ecs_deplace * 100, 0)} % des ballons à midi`);
+  if (P.horizon === "2035" && P.ve_pilote > 0) sols.push(`${fr(P.ve_pilote * 100, 0)} % des VE pilotés`);
+  if (P.pv_plafond < 1) sols.push(`injection solaire plafonnée à ${fr(P.pv_plafond * 100, 0)} %`);
+  $("oneline").innerHTML = `<b>Solaire ${fr(P.m_pv * K.Ppv_A, 0)} MW (${variation(P.m_pv)} vs parc actuel)</b>, <b>éolien ${fr(P.m_eol * K.Peol_A, 0)} MW (${variation(P.m_eol)} vs parc actuel)</b>, ${sols.length ? sols.join(", ") : "sans solution de flexibilité"} — ${P.horizon === "2035" ? "consommation 2035 électrifiée" : "consommation actuelle"}, ${moy ? `moyenne des années météo ${MOY_TXT} (courbes : année ${P.annee})` : `météo ${P.annee}`}.`;
+}
+// Économie de la batterie (vs le même scénario sans batterie) : gain moyen 2021-2025, VAN, points de couverture gagnés
+function ecoBatterie(r, all) {
+  const capex = r.capex_batterie_EUR; if (!(capex > 0)) return null;
+  const sans = META.annees.map(a => sim({ ...P, bat_pilotage: "aucune" }, a));
+  const gain = all.reduce((s, x, i) => s + x.valeur_annuelle_EUR - sans[i].valeur_annuelle_EUR, 0) / all.length;
+  const om = r.om_annuel_EUR, van = (gain - om) * r.facteur_annuite - capex;
+  const ref = moy ? sans.reduce((t, x) => t + x.couverture_horaire, 0) / sans.length : sans[META.annees.indexOf(P.annee)].couverture_horaire;
+  const pts = (r.couverture_horaire - ref) * 100;
+  return { capex, gain, om, van, pts };
+}
+function renderKpis(r, all, eco) {
+  const ecr = r.ecretement_part * 100, okAll = all.every(x => x.conforme), annKo = META.annees.filter((a, i) => !all[i].conforme);
+  const st = r.conforme ? (okAll ? ["ok", "✓ Conforme chaque année"] : ["warn", `! Dépassé en ${annKo.join(", ")}`]) : ["ko", "✕ Au-delà de 5 %"];
+  const gx = (v) => 8 + Math.min(v, 25) / 25 * 184;
+  const ev = all.map(x => x.ecretement_part * 100);
+  const gauge = `<svg class="gauge" viewBox="0 0 200 28" aria-hidden="true">
+    <rect x="8" y="9" width="184" height="6" fill="var(--line-2)"/>
+    <rect x="${gx(Math.min(...ev))}" y="9" width="${Math.max(1, gx(Math.max(...ev)) - gx(Math.min(...ev)))}" height="6" fill="var(--ink-3)" opacity=".35"/>
+    ${[0, 5, 10, 15, 20, 25].map(t => `<line x1="${gx(t)}" x2="${gx(t)}" y1="16" y2="19" stroke="var(--ink-3)"/><text x="${gx(t)}" y="27" text-anchor="middle" style="font-size:9px">${t}</text>`).join("")}
+    <line x1="${gx(5)}" x2="${gx(5)}" y1="3" y2="19" stroke="var(--seuil)" stroke-width="1.5" stroke-dasharray="3 2"/>
+    <rect x="${gx(ecr) - 2}" y="5" width="4" height="14" fill="var(--ink)"/></svg>`;
+  let cout = `<div class="v">0<span class="u">M€</span></div><div class="r">Aucune batterie dans ce scénario.</div>`;
+  if (eco) {
+    const { capex, gain, om, van, pts } = eco;
+    cout = `<div class="v">${fr(capex / 1e6, 0)}<span class="u">M€</span></div><div class="r">${pts > 0.05 ? `<b>${fr(capex / 1e6 / pts, 0)} M€ par point de couverture</b> gagné (+${fr(pts)} pt). ` : ""}Entretien ${fr(om / 1e6, 1)} M€/an, gain estimé ${fr(gain / 1e6, 1)} M€/an et VAN ${fr(van / 1e6, 0)} M€ sur ${P.duree_analyse} ans.</div>
+      <span class="r">Électricité évitée valorisée au prix (€/kWh) :</span>${segPrix()}`;
+  }
+  // Repère « parc actuel » : solaire et éolien ×1, sans batterie, ballons ni plafond, même année et même horizon
+  // (les hypothèses VE de l'horizon 2035 gardent leurs valeurs par défaut).
+  const pParc = { ...P, m_pv: 1, m_eol: 1, bat_pilotage: "aucune", ecs_deplace: 0, pv_plafond: 1, ve_pilote: DEF.ve_pilote, ve_non_pilote: DEF.ve_non_pilote };
+  const parc = moy ? moyenneAnnees(META.annees.map(a => sim(pParc, a)), {}) : sim(pParc, P.annee);
+  const gwh = v => fr(v / 1000, v / 1000 < 10 ? 1 : 0);
+  $("kpis-off").innerHTML = "";
+  $("kpis").innerHTML = `
+   <div class="kpi" id="k-prod">${kHead("k-prod", "Énergie produite")}<div class="v">${gwh(r.production_MWh)}<span class="u">GWh/an</span></div>
+     <div class="r">Soit <b>${fr(r.couverture * 100, 0)} %</b> de la consommation annuelle.</div></div>
+   <div class="kpi" id="k-auto">${kHead("k-auto", "Taux de couverture (heure par heure)")}<div class="v">${fr(r.couverture_horaire * 100)}<span class="u">%</span></div>
+     <div class="r">Parc actuel : <b>${fr(parc.couverture_horaire * 100)} %</b>. Météo 2021-2025 : <b>${rng(all, "couverture_horaire")} %</b>.</div></div>
+   <div class="kpi" id="k-surplus">${kHead("k-surplus", "Surplus envoyé au réseau")}<div class="v">${gwh(r.surplus_exporte_MWh)}<span class="u">GWh/an</span></div>
+     <div class="r">Dont <b>${gwh(r.ecretement_dynamique_MWh)} GWh</b> écrêtés.${r.ecretement_statique_MWh > 0 ? `<br>+ <b>${gwh(r.ecretement_statique_MWh)} GWh</b> non injectés (plafond).` : ""}</div></div>
+   <div class="kpi" id="k-deficit">${kHead("k-deficit", "Déficit acheté au réseau")}<div class="v">${gwh(r.deficit_importe_MWh)}<span class="u">GWh/an</span></div>
+     <div class="r">Soit <b>${fr(r.deficit_importe_MWh / r.consommation_MWh * 100)} %</b> de la consommation achetée au réseau.</div></div>
+   <div class="kpi" id="k-ecr">${kHead("k-ecr", "Énergie perdue (écrêtement)")}<div class="v">${fr(ecr)}<span class="u">%</span></div>
+     <span class="pill ${st[0]}">${st[1]}</span>${gauge}</div>
+   <div class="kpi" id="k-vig">${kHead("k-vig", "Heures de vigilance réseau")}<div class="v">${fr(r.heures_vigilance, 0)}<span class="u">h/an</span></div>
+     <div class="r">Heures au-dessus de 120 % de la consommation ; météo 2021-2025 : <b>${rng(all, "heures_vigilance", 1, 0)} h</b>.</div></div>
+   <div class="kpi" id="k-pointes">${kHead("k-pointes", "Pointe d'injection")}<div class="v">${fr(r.pointe_injection_MW, 0)}<span class="u">MW ↑</span></div>
+     <div class="r">Soutirage maximal au réseau : <b>${fr(r.pointe_soutirage_MW, 0)} MW</b>.</div></div>
+   <div class="kpi" id="k-cout">${kHead("k-cout", "Investissement batterie")}${cout}</div>`;
+}
+const INFO = {
+  "k-auto": "<b>Part de la consommation couverte, heure par heure,</b> par la production locale solaire et éolienne (batterie comprise), en %. 100 % signifierait que chaque heure de l'année est couverte localement. Un taux bas malgré une forte production annuelle indique un décalage entre les heures de production et celles de consommation. « Parc actuel » : même année et même horizon, solaire et éolien d'aujourd'hui, sans batterie, ballons ni plafond. La plage 2021-2025 montre l'effet de la météo. Source : moteur du simulateur, données ODRÉ, Enedis, RTE.",
+  "k-surplus": "<b>Énergie produite en excès et envoyée au réseau</b> sur l'année, en GWh : ce que la consommation locale (et la batterie) n'absorbe pas. « Dont écrêtés » : la part au-dessus du seuil de vigilance (120 % de la consommation) qu'il faudrait couper. Si le plafond d'injection solaire est activé, l'énergie bridée aux onduleurs n'est jamais injectée : elle est indiquée à part.",
+  "k-deficit": "<b>Énergie achetée au réseau</b> sur l'année, en GWh, quand la production locale (et la batterie) ne suffit pas. Rapportée à la consommation annuelle, c'est la part de la consommation qui dépend du réseau national : le complément exact du taux de couverture.",
+  "k-prod": "<b>Production annuelle de solaire et d'éolien</b> du scénario, en GWh. Le pourcentage compare cette énergie à la consommation annuelle : 100 % = autant produit que consommé sur l'année, mais pas aux mêmes heures (voir le taux de couverture).",
+  "k-ecr": "<b>Part de la production brute perdue par écrêtement</b> : plafonnement des onduleurs et dépassement du seuil de vigilance (120 % de la consommation). La limite de 5 % par année météo sert de repère : au-delà, le scénario n'est plus conforme. Leviers : plus d'éolien, ballons d'eau chaude, batterie.",
+  "k-vig": "<b>Nombre d'heures par an où la production dépasse 120 % de la consommation locale.</b> Plus il est élevé, plus le réseau est sollicité en injection et plus le risque d'écrêtement augmente.",
+  "k-pointes": "<b>Puissance maximale injectée sur le réseau (↑)</b> sur l'année, avec l'appel maximal depuis le réseau (↓) quand la production ne suffit pas. Ces pointes dimensionnent les ouvrages de raccordement : à comparer à la capacité restante des postes sources sur la carte.",
+  "k-cout": "<b>Coût d'investissement de la batterie</b> (CAPEX, en M€), son entretien annuel et le gain annuel qu'elle apporte. « M€ par point de couverture » : CAPEX divisé par les points de taux de couverture gagnés par rapport au même scénario sans batterie. La VAN indique si ce gain compense les coûts sur la durée d'analyse : négative, la batterie ne se rembourse pas. Bascule « Détail / Gros » : l'électricité que la batterie évite d'acheter est valorisée au tarif réglementé (vue la plus favorable à la batterie) ou au prix de gros. Sources : NREL ATB 2025 (coût, entretien), tarif réglementé 0,194 €/kWh, CRE."
+};
+const EYE_PATH = '<path d="M1 8s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/>';
+const kHead = (id, label) => `<div class="k-head"><span class="label">${label}</span><span class="k-tools">
+  <button type="button" class="k-btn k-eye" data-name="${label}" aria-label="Masquer « ${label} »" title="Masquer / afficher cet indicateur"><svg class="e-open" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}</svg><svg class="e-closed" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}<path d="M2.5 14L13.5 2"/></svg></button>
+  <button type="button" class="k-btn k-info" aria-expanded="false" aria-label="À propos de « ${label} »" title="Comment lire cet indicateur"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></span></div>
+  <div class="k-pop" role="note" hidden>${INFO[id]}</div>`;
+// Ajout par poste source. Lecture homothétique (défaut) : chaque poste reçoit l'extension de son propre parc.
+// Lecture « projets orientés » (contrainte (b) de 13_trajectoire.py) : l'ajout total du territoire est réparti au prorata
+// de la capacité S3REnR restante de chaque poste ; il n'y a dépassement que si l'ajout total excède cette capacité.
+function ajoutsPostes(oriente = false) {
+  const dp = P.m_pv - 1, de = P.m_eol - 1, rest = GEO.postes.reduce((t, p) => t + p.restant_MW, 0);
+  const total = Math.max(0, dp * K.Ppv_A) + Math.max(0, de * K.Peol_A);
+  return GEO.postes.map(p => { const aj = oriente ? total * p.restant_MW / rest : Math.max(0, dp * p.pv_MW + de * p.eol_MW); const occ = p.capacite_reservee_MW - p.restant_MW; return { ...p, ajout: aj, remplissage: (occ + aj) / p.capacite_reservee_MW, depasse: Math.max(0, aj - p.restant_MW) }; });
+}
+const liste = (a) => a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " et " + a[a.length - 1];
+function renderVerdict(r, all, eco) {
+  const okAll = all.every(x => x.conforme), aj = ajoutsPostes();
+  const ajout = Math.max(0, (P.m_pv - 1) * K.Ppv_A) + Math.max(0, (P.m_eol - 1) * K.Peol_A);
+  const restLoc = GEO.postes.reduce((s, p) => s + p.restant_MW, 0);
+  const sat = aj.filter(p => p.depasse > 0.5).map(p => p.nom);
+  const libres = aj.filter(p => p.restant_MW - p.ajout > 10).map(p => p.nom);
+  let cls = okAll ? "ok" : (r.conforme ? "warn" : "ko"), ic = okAll ? "✓" : (r.conforme ? "!" : "✕"), t = [];
+  t.push(okAll ? "L'écrêtement reste sous la limite de 5 % pour les cinq années météo." : `L'écrêtement dépasse la limite de 5 % ${r.conforme ? "certaines années" : "cette année"} (jusqu'à ${fr(Math.max(...all.map(x => x.ecretement_part * 100)))} %).`);
+  // Batterie dont la VAN est négative : état « ! » même si l'écrêtement est conforme (conforme mais non rentable)
+  if (eco && eco.van < 0) { if (okAll) { cls = "warn"; ic = "!"; }
+    t.push(`Mais la batterie n'est pas rentable : ${fr(eco.capex / 1e6, 0)} M€ d'investissement et ${fr(eco.om / 1e6)} M€/an d'entretien pour un gain de ${fr(eco.gain / 1e6)} M€/an (VAN ${fr(eco.van / 1e6, 0)} M€ sur ${P.duree_analyse} ans).`); }
+  if (!okAll) t.push(P.bat_pilotage === "aucune" ? "Leviers : davantage d'éolien plutôt que de solaire, ballons d'eau chaude à midi, ou une batterie." : "Agrandir la batterie ou réduire le solaire.");
+  if (ajout > 0.5) t.push(sat.length ? `${fr(ajout, 0)} MW à raccorder : ${liste(sat)} ${sat.length > 1 ? "seraient saturés" : "serait saturé"} si l'on étendait le parc existant à l'identique ; orienter les projets vers ${liste(libres)} (${fr(restLoc, 0)} MW encore disponibles sur les postes du territoire).` : `${fr(ajout, 0)} MW à raccorder, compatibles avec les capacités restantes des postes.`);
+  $("verdict").className = "panel verdict " + cls;
+  $("verdict").innerHTML = `<span class="ic" aria-hidden="true">${ic}</span><p>${t.map((x, i) => i && !x.startsWith("Mais la batterie") ? `<span class="v-suite">${x}</span>` : x).join(" ")}</p>`; // en Démo : constat + rentabilité seulement
+}
+// ---- graphiques (Apache ECharts)
+const CH = {}, SEL = {};
+const hexA = (h, a) => { h = (h || "").trim(); const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(h); if (!m) return h; let x = m[1]; if (x.length === 3) x = x.split("").map(c => c + c).join(""); return `rgba(${parseInt(x.slice(0, 2), 16)},${parseInt(x.slice(2, 4), 16)},${parseInt(x.slice(4, 6), 16)},${a})`; };
+const r1 = v => Math.round(v * 10) / 10;
+function cols() { const st = getComputedStyle(document.documentElement), v = n => st.getPropertyValue(n).trim();
+  return { ink: v("--ink"), ink2: v("--ink-2"), ink3: v("--ink-3"), line: v("--line"), line2: v("--line-2"), panel: v("--panel"), seuil: v("--seuil"), bocage: v("--bocage"), accent: v("--accent"),
+    eol: v("--s-eol"), pv: v("--s-pv"), bat: v("--s-bat"), ecs: v("--s-ecs"), font: v("--f-body") }; }
+function ecBase(c) { return { animationDuration: 300, animationDurationUpdate: 300, useUTC: true, textStyle: { fontFamily: c.font, color: c.ink2 },
+  tooltip: { trigger: "axis", confine: true, backgroundColor: c.ink, borderWidth: 0, padding: [7, 9], textStyle: { color: c.panel, fontSize: 12.5 * FS(), fontFamily: c.font },
+    extraCssText: "border-radius:3px;line-height:1.4;font-variant-numeric:tabular-nums;white-space:normal", axisPointer: { type: "line", lineStyle: { color: c.ink3, type: "dashed" } } } }; }
+const FS = () => document.body.classList.contains("projection") ? 1.25 : 1; // agrandissement des textes des graphiques en projection
+const axTxt = c => ({ color: c.ink2, fontSize: 11.5 * FS(), fontFamily: c.font });
+// Dessine (ou met à jour) un graphique ; si le conteneur est masqué (autre vue), on attend qu'il devienne visible.
+function drawChart(id, option, height) {
+  const el = $(id);
+  if (typeof echarts === "undefined") { el.innerHTML = '<p class="note" style="padding:12px">Bibliothèque de graphiques (ECharts) non chargée : vérifier que le fichier vendor/echarts/echarts.min.js est présent à côté de index.html.</p>'; return; }
+  if (height) el.style.height = height + "px";
+  let c = CH[id];
+  if (!c) { c = CH[id] = { chart: null, opt: null, dirty: false };
+    new ResizeObserver(() => { if (!el.offsetWidth) return; if (!c.chart) c.chart = echarts.init(el, null, { renderer: "canvas" });
+      if (c.dirty && c.opt) { c.chart.setOption(c.opt, { notMerge: true }); c.dirty = false; } c.chart.resize(); }).observe(el); }
+  for (const se of option.series) if (se.data && !Array.isArray(se.data)) se.data = Array.from(se.data); // ECharts lit un tableau typé comme des paires x,y entrelacées
+  c.opt = option;
+  if (!el.offsetWidth) { c.dirty = true; return; }
+  if (!c.chart) c.chart = echarts.init(el, null, { renderer: "canvas" });
+  c.chart.setOption(option, { notMerge: true }); c.dirty = false; c.chart.resize();
+}
+// Légende HTML cliquable (masque / affiche une série)
+function setLegend(chartId, legId, items) {
+  const box = $(legId), sel = SEL[chartId] || (SEL[chartId] = {});
+  box.innerHTML = items.map(([n, st, cls]) => `<button type="button" data-n="${n}" aria-pressed="${sel[n] !== false}" class="${sel[n] === false ? "off" : ""}"><i ${cls ? `class="${cls}" ` : ""}style="${st}"></i>${n}</button>`).join("");
+  box.onclick = e => { const b = e.target.closest("button"); if (!b) return; const n = b.dataset.n, hide = sel[n] !== false; sel[n] = hide ? false : true;
+    b.classList.toggle("off", hide); b.setAttribute("aria-pressed", !hide);
+    const c = CH[chartId]; if (c && c.chart) c.chart.dispatchAction({ type: hide ? "legendUnSelect" : "legendSelect", name: n }); };
+}
+const legSel = (id, names) => ({ show: false, data: names, selected: Object.fromEntries(names.map(n => [n, (SEL[id] || {})[n] !== false])) });
+function themeRerender() { if (typeof lastR !== "undefined" && lastR) render(); }
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", themeRerender);
+new MutationObserver(themeRerender).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+function journeeType(s) {
+  const A = ANS[P.annee], m = saison === "hiver" ? 0 : 6;
+  const acc = {}; const keys = ["pv", "eol", "C", "C0", "ch", "dch", "ecs_ajoute", "ecs_retire", "ve_pil", "pac", "ve_np", "ve_tar"]; for (const k of keys) acc[k] = new Float64Array(24);
+  const cnt = new Float64Array(24);
+  for (let i = 0; i < A.n; i++) if (A.mois[i] === m && A.ouvre[i]) { const h = A.heure[i]; cnt[h]++; for (const k of keys) acc[k][h] += s[k][i]; acc.eol[h] += A.autres[i]; }
+  for (const k of keys) for (let h = 0; h < 24; h++) acc[k][h] /= Math.max(cnt[h], 1);
+  return acc;
+}
+function renderJour(s) {
+  if (!s) return;
+  const j = journeeType(s), c = cols(), HH = Array.from({ length: 24 }, (_, h) => h);
+  const seuil = j.C.map(v => v * 1.2), flex = j.ecs_ajoute.map((v, h) => Math.max(0, v - j.ecs_retire[h]) + (h >= 9 && h < 17 ? j.ve_pil[h] : 0));
+  const cMinusFlex = j.C.map((v, h) => v - flex[h]), hasFlex = flex.some(v => v > 0.2);
+  const bat = P.bat_pilotage !== "aucune" || j.ch.some(v => v > 0.05) || j.dch.some(v => v > 0.05);
+  const N = { eol: "éolien (+ bio, hydro)", pv: "solaire", conso: "consommation", seuil: "seuil 120 %", ch: "charge batterie (plein)", dch: "décharge batterie (contour)", flex: "consommation déplacée vers la journée" };
+  const names = [N.eol, N.pv, N.conso, N.seuil, ...(bat ? [N.ch, N.dch] : []), ...(hasFlex ? [N.flex] : [])];
+  const area = (name, data, color, extra = {}) => ({ name, type: "line", stack: "prod", symbol: "none", data: Array.from(data, r1), lineStyle: { width: 0 }, areaStyle: { color }, emphasis: { disabled: true }, ...extra });
+  const series = [
+    area(N.eol, j.eol, hexA(c.eol, .85)),
+    area(N.pv, j.pv, hexA(c.pv, .85)),
+    ...(hasFlex ? [
+      { name: "_base", type: "line", stack: "flex", symbol: "none", data: Array.from(cMinusFlex, r1), lineStyle: { width: 0 }, silent: true, tooltip: { show: false } },
+      { name: N.flex, type: "line", stack: "flex", symbol: "none", data: Array.from(flex, r1), lineStyle: { width: 0 }, areaStyle: { color: hexA(c.ecs, .55) }, emphasis: { disabled: true } }] : []),
+    ...(bat ? [
+      { name: N.ch, type: "bar", data: Array.from(j.ch, v => -r1(v)), barWidth: "55%", barGap: "-100%", itemStyle: { color: c.bat, borderRadius: 1 }, emphasis: { disabled: true } },
+      { name: N.dch, type: "bar", data: Array.from(j.dch, v => -r1(v)), barWidth: "55%", barGap: "-100%", itemStyle: { color: "transparent", borderColor: c.bat, borderWidth: 1.5, borderRadius: 1 }, emphasis: { disabled: true } }] : []),
+    { name: N.seuil, type: "line", symbol: "none", data: Array.from(seuil, r1), lineStyle: { color: c.seuil, width: 1.5, type: "dashed" }, itemStyle: { color: c.seuil },
+      endLabel: { show: true, formatter: "seuil 120 %", color: c.seuil, fontSize: 11.5 * FS(), fontFamily: c.font }, markLine: { silent: true, symbol: "none", label: { show: false }, lineStyle: { color: c.ink3, width: 1, type: "solid" }, data: [{ yAxis: 0 }] }, emphasis: { disabled: true } },
+    { name: N.conso, type: "line", symbol: "none", data: Array.from(j.C, r1), lineStyle: { color: c.ink, width: 2.2 }, itemStyle: { color: c.ink },
+      endLabel: { show: true, formatter: "consommation", color: c.ink, fontSize: 11.5 * FS(), fontFamily: c.font }, emphasis: { disabled: true } }
+  ];
+  const opt = { ...ecBase(c), legend: legSel("c-jour", names), grid: { left: 46, right: Math.round(108 * FS()), top: 26, bottom: 28 },
+    xAxis: { type: "category", data: HH.map(h => h + " h"), boundaryGap: bat, axisTick: { show: false }, axisLine: { onZero: false, lineStyle: { color: c.ink3 } },
+      axisLabel: { ...axTxt(c), interval: i => [0, 6, 12, 18, 23].includes(i) } },
+    yAxis: { type: "value", name: "MW", nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: axTxt(c), splitLine: { lineStyle: { color: c.line2 } } },
+    series };
+  opt.tooltip.formatter = ps => { const h = ps[0].dataIndex;
+    return `<b>${h} h</b><br>solaire ${fr(j.pv[h], 0)} MW · éolien ${fr(j.eol[h], 0)} MW<br>consommation ${fr(j.C[h], 0)} MW${j.ch[h] > .05 ? `<br>charge batterie ${fr(j.ch[h], 0)} MW` : ""}${j.dch[h] > .05 ? `<br>décharge ${fr(j.dch[h], 0)} MW` : ""}${hasFlex && flex[h] > .2 ? `<br>consommation déplacée ${fr(flex[h], 0)} MW` : ""}`; };
+  $("jt-sub").textContent = `Jour ouvré moyen de ${saison === "hiver" ? "janvier" : "juillet"} ${P.annee}, heure locale${moy ? " (année typique ; indicateurs en moyenne " + MOY_TXT + ")" : ""}`;
+  setLegend("c-jour", "lg-jour", [[N.eol, "background:var(--s-eol)", "a"], [N.pv, "background:var(--s-pv)", "a"], [N.conso, "background:var(--ink)"], [N.seuil, "background:var(--seuil)"],
+    ...(bat ? [[N.ch, "background:var(--s-bat)", "a"], [N.dch, "background:transparent;box-shadow:inset 0 0 0 1.5px var(--s-bat)", "a"]] : []), ...(hasFlex ? [[N.flex, "background:var(--s-ecs);opacity:.55", "a"]] : [])]);
+  drawChart("c-jour", opt);
+}
+function renderMois(s) {
+  if (!s) return;
+  const A = ANS[P.annee], c = cols();
+  const loc = new Float64Array(12), exp = new Float64Array(12), ecr = new Float64Array(12), cons = new Float64Array(12), ach = new Float64Array(12);
+  for (let i = 0; i < A.n; i++) { const m = A.mois[i], d = Math.min(s.P[i], s.C[i]) + s.dch[i]; loc[m] += d; const x = s.inj[i]; const e = Math.max(x - (P.seuil_vigilance - 1) * s.C[i], 0); ecr[m] += e; exp[m] += Math.max(s.P[i] - s.C[i], 0) - s.ch[i] - e; cons[m] += s.C[i]; ach[m] += s.C[i] - d; }
+  const M = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+  const N = { loc: "production consommée sur place", exp: "surplus envoyé au réseau", ecr: "écrêté (> 120 %)", cl: "conso couverte localement", ca: "conso achetée au réseau" };
+  const G = v => Array.from(v, x => r1(Math.max(x, 0) / 1000));
+  const bar = (name, stack, data, color, extra = {}) => ({ name, type: "bar", stack, data, itemStyle: { color }, emphasis: { disabled: true }, ...extra });
+  const consLoc = Array.from(cons, (v, m) => r1((v - ach[m]) / 1000));
+  const series = [bar(N.loc, "p", G(loc), c.bocage, { barGap: "8%", barCategoryGap: "26%" }), bar(N.exp, "p", G(exp), hexA(c.accent, .55)), bar(N.ecr, "p", G(ecr), c.seuil),
+    bar(N.cl, "c", consLoc, hexA(c.bocage, .35)), bar(N.ca, "c", G(ach), hexA(c.ink3, .55))];
+  const opt = { ...ecBase(c), legend: legSel("c-mois", Object.values(N)), grid: { left: 46, right: 12, top: 26, bottom: 28 },
+    xAxis: { type: "category", data: M, axisTick: { show: false }, axisLine: { lineStyle: { color: c.ink3 } }, axisLabel: { ...axTxt(c), interval: 0 } },
+    yAxis: { type: "value", name: "GWh", nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: axTxt(c), splitLine: { lineStyle: { color: c.line2 } } }, series };
+  opt.tooltip.axisPointer = { type: "shadow", shadowStyle: { color: hexA(c.ink3, .12) } };
+  opt.tooltip.formatter = ps => { const m = ps[0].dataIndex, g = v => fr(v / 1000, 1);
+    return `<b>${M[m]} ${P.annee}</b><br>production : ${g(loc[m] + Math.max(exp[m], 0) + ecr[m])} GWh<br>&nbsp;· consommée sur place ${g(loc[m])} · surplus réseau ${g(Math.max(exp[m], 0))} · écrêtée ${g(ecr[m])}<br>consommation : ${g(cons[m])} GWh<br>&nbsp;· couverte localement ${g(cons[m] - ach[m])} · achetée ${g(ach[m])}`; };
+  $("bm-sub").textContent = `Barre de gauche : production · barre de droite : consommation — ${P.annee}${moy ? " (année typique)" : ""}`;
+  setLegend("c-mois", "lg-mois", [[N.loc, "background:var(--bocage)", "a"], [N.exp, "background:var(--accent);opacity:.55", "a"], [N.ecr, "background:var(--seuil)", "a"], [N.cl, "background:var(--bocage);opacity:.35", "a"], [N.ca, "background:var(--ink-3);opacity:.55", "a"]]);
+  drawChart("c-mois", opt);
+}
+let mapL = null, mapCom = null, mapPostes = null, mapFit = false;
+// ---- éléments affichés (menu « Affichage »), barre latérale et couches de carte, mémorisés dans le navigateur
+const BLOCS = [
+  ["Textes", [["b-resume", "Résumé du scénario"], ["b-verdict", "Verdict"]]],
+  ["Graphiques et carte", [["b-jour", "Journée type"], ["b-carte", "Carte : communes et postes sources"], ["b-mois", "Bilan mois par mois"]]],
+  ["Vue expert", [["b-heures", "Deux semaines heure par heure"], ["b-mono", "Monotones"], ["b-traj", "Trajectoires"], ["b-tornade", "Sensibilité (tornade)"], ["b-hyp", "Toutes les hypothèses"], ["b-annees", "Indicateurs 2021-2025"], ["b-methode", "Méthode et sources"]]]
+];
+const MENU_IDS = BLOCS.flatMap(g => g[1].map(x => x[0]));
+const KPI_IDS = ["k-prod", "k-auto", "k-surplus", "k-deficit","k-ecr", "k-vig", "k-pointes", "k-cout"];
+const ALL_IDS = [...KPI_IDS, ...MENU_IDS];
+let offSet = new Set(), showPostes = true, showDens = false, showOriente = false, sideOpen = !matchMedia("(max-width:900px)").matches, dispOpen = false, infoOpen = null;
+try { const o = JSON.parse(localStorage.getItem("mauges.affichage") || "{}"); offSet = new Set((o.off || []).filter(id => ALL_IDS.includes(id))); if (o.postes === false) showPostes = false; if (o.dens === true) showDens = true; if (o.oriente === true) showOriente = true; if (typeof o.side === "boolean") sideOpen = o.side; if (o.disp === true) dispOpen = true; } catch (e) { /* stockage indisponible : réglages par défaut */ }
+function savePrefs() { try { localStorage.setItem("mauges.affichage", JSON.stringify({ off: [...offSet], postes: showPostes, dens: showDens, oriente: showOriente, side: sideOpen, disp: dispOpen })); } catch (e) { /* ignoré */ } }
+function showInfo() {
+  for (const card of document.querySelectorAll(".kpi")) { const open = card.id === infoOpen, pop = card.querySelector(".k-pop"), btn = card.querySelector(".k-info");
+    if (btn) btn.setAttribute("aria-expanded", open);
+    if (pop) { pop.hidden = !open; if (open) { pop.style.left = "0"; pop.style.right = "auto"; if (pop.getBoundingClientRect().right > innerWidth - 8) { pop.style.left = "auto"; pop.style.right = "0"; } } } }
+}
+function applyVis() {
+  for (const id of ALL_IDS) { if (KPI_IDS.includes(id)) continue; const el = document.getElementById(id); if (el) el.classList.toggle("user-off", offSet.has(id)); }
+  // indicateurs : masqués = repliés en pastille (œil barré) sous la grille, pour pouvoir les rétablir d'un clic
+  const on = $("kpis"), off = $("kpis-off");
+  for (const id of KPI_IDS) { const el = document.getElementById(id); if (!el) continue; const hid = offSet.has(id); el.classList.toggle("k-min", hid); (hid ? off : on).appendChild(el);
+    const eye = el.querySelector(".k-eye"); if (eye) eye.setAttribute("aria-label", (hid ? "Afficher « " : "Masquer « ") + eye.dataset.name + " »"); }
+  on.classList.toggle("user-off", !on.querySelector(".kpi")); off.classList.toggle("user-off", !off.querySelector(".kpi"));
+  if (infoOpen && offSet.has(infoOpen)) infoOpen = null;
+  showInfo();
+  const vis = ["b-jour", "b-carte"].filter(id => !offSet.has(id)), row = document.querySelector(".row2");
+  row.classList.toggle("single", vis.length === 1); row.classList.toggle("user-off", vis.length === 0);
+  for (const cb of document.querySelectorAll("#menu-body input")) cb.checked = !offSet.has(cb.dataset.id);
+}
+function setDisp(open) {
+  dispOpen = open;
+  document.body.classList.toggle("disp-open", open);
+  $("menu-toggle").setAttribute("aria-expanded", open);
+  $("menu-toggle").setAttribute("aria-label", `${open ? "Replier" : "Afficher"} les éléments`);
+  $("menu-toggle").title = open ? "Replier l'affichage" : "Afficher les éléments";
+  $("menu-chevron").setAttribute("d", open ? "M6 3l5 5-5 5" : "M10 3L5 8l5 5");
+  savePrefs();
+}
+function setSide(open) {
+  sideOpen = open;
+  document.body.classList.toggle("side-closed", !open);
+  $("side-toggle").setAttribute("aria-expanded", open);
+  $("side-toggle").setAttribute("aria-label", `${open ? "Replier" : "Afficher"} les réglages`);
+  $("side-toggle").title = open ? "Replier" : "Afficher les réglages";
+  $("side-chevron").setAttribute("d", open ? "M10 3L5 8l5 5" : "M6 3l5 5-5 5");
+  savePrefs();
+}
+(function buildMenu() {
+  $("menu-body").innerHTML = BLOCS.map(([g, items]) => `<div class="dg"><span class="label">${g}</span>${items.map(([id, t]) => `<label class="mrow"><input type="checkbox" data-id="${id}" checked>${t}</label>`).join("")}</div>`).join("");
+  $("menu-body").onchange = e => { const id = e.target.dataset.id; if (!id) return; e.target.checked ? offSet.delete(id) : offSet.add(id); savePrefs(); applyVis(); };
+  $("menu-all").onclick = () => { for (const id of MENU_IDS) offSet.delete(id); savePrefs(); applyVis(); };
+  $("menu-none").onclick = () => { for (const id of MENU_IDS) offSet.add(id); savePrefs(); applyVis(); };
+  // barre d'affichage (à droite) : elle pousse le contenu, la page reste utilisable
+  $("menu-toggle").onclick = () => setDisp(!dispOpen);
+  setDisp(dispOpen);
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && infoOpen) { infoOpen = null; showInfo(); } });
+  // indicateurs : œil (masquer / afficher) et « i » (explication)
+  const kpiClick = e => { const b = e.target.closest(".k-btn"); if (!b) return; const id = b.closest(".kpi").id;
+    if (b.classList.contains("k-eye")) { offSet.has(id) ? offSet.delete(id) : offSet.add(id); savePrefs(); applyVis(); }
+    else { infoOpen = infoOpen === id ? null : id; showInfo(); } };
+  $("kpis").addEventListener("click", kpiClick); $("kpis-off").addEventListener("click", kpiClick);
+  document.addEventListener("click", e => { if (infoOpen && !e.target.closest(".kpi")) { infoOpen = null; showInfo(); } });
+  // barre latérale
+  $("side-toggle").onclick = () => setSide(!sideOpen);
+  setSide(sideOpen);
+  for (const button of document.querySelectorAll(".map-info")) button.onclick = () => {
+    const help = $(button.getAttribute("aria-controls")), open = help.hidden;
+    for (const other of document.querySelectorAll(".map-info")) {
+      $(other.getAttribute("aria-controls")).hidden = true;
+      other.setAttribute("aria-expanded", false);
+    }
+    help.hidden = !open;
+    button.setAttribute("aria-expanded", open);
+  };
+  // couches de la carte
+  $("postes_on").checked = showPostes; $("dens_on").checked = showDens;
+  $("postes_on").onchange = () => { showPostes = $("postes_on").checked; savePrefs(); if (mapL) applyPostes(); };
+  $("dens_on").onchange = () => { showDens = $("dens_on").checked; savePrefs(); if (mapL && lastR) renderCarte(); };
+  $("ori_on").checked = showOriente;
+  $("ori_on").onchange = () => { showOriente = $("ori_on").checked; savePrefs(); if (mapL && lastR) renderCarte(); };
+})();
+// surface d'une commune (km²), calculée sur le contour : projection locale en km, formule du lacet ; trous déduits
+function surfaceKm2(f) {
+  if (f.properties._km2) return f.properties._km2;
+  const ring = r => { const k = Math.cos(r[0][1] * Math.PI / 180) * 111.32, pts = r.map(([lo, la]) => [lo * k, la * 110.574]); let a = 0;
+    for (let i = 0; i < pts.length; i++) { const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % pts.length]; a += x1 * y2 - x2 * y1; } return Math.abs(a) / 2; };
+  let km2 = 0; for (const poly of f.geometry.coordinates) km2 += ring(poly[0]) - poly.slice(1).reduce((t, h) => t + ring(h), 0);
+  return (f.properties._km2 = km2);
+}
+let densRange = [0, 0], etiquettes = [], obstacles = [];
+// Point intérieur d'une commune (« pôle d'inaccessibilité » approché) : point du plus grand polygone le plus éloigné
+// de ses bords, recherché sur une grille puis affiné. Plus sûr que le centroïde pour les communes de forme irrégulière.
+const dansAnneau = (x, y, r) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+function pointInterieur(f) {
+  if (f.properties._pi) return f.properties._pi;
+  const polys = f.geometry.coordinates, aire = r => Math.abs(r.reduce((a, p, i) => { const q = r[(i + 1) % r.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0));
+  const poly = polys.reduce((a, b) => aire(b[0]) > aire(a[0]) ? b : a), k = Math.cos(poly[0][0][1] * Math.PI / 180);
+  const dist = (x, y) => { if (!dansAnneau(x, y, poly[0]) || poly.slice(1).some(h => dansAnneau(x, y, h))) return -1; let m = Infinity;
+    for (const r of poly) for (let i = 0; i < r.length - 1; i++) { const [ax, ay] = r[i], [bx, by] = r[i + 1], dx = (bx - ax) * k, dy = by - ay, l = dx * dx + dy * dy;
+      const t = l ? Math.max(0, Math.min(1, ((x - ax) * k * dx + (y - ay) * dy) / l)) : 0, ex = (x - ax) * k - t * dx, ey = y - ay - t * dy; m = Math.min(m, ex * ex + ey * ey); } return m; };
+  const xs = poly[0].map(p => p[0]), ys = poly[0].map(p => p[1]);
+  let best = [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2], bd = -1, pas = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) / 24;
+  for (let x = Math.min(...xs); x <= Math.max(...xs); x += pas) for (let y = Math.min(...ys); y <= Math.max(...ys); y += pas) { const d = dist(x, y); if (d > bd) { bd = d; best = [x, y]; } }
+  for (let it = 0; it < 4; it++) { pas /= 3; const [bx, by] = best; for (let i = -3; i <= 3; i++) for (let j = -3; j <= 3; j++) { const d = dist(bx + i * pas, by + j * pas); if (d > bd) { bd = d; best = [bx + i * pas, by + j * pas]; } } }
+  return (f.properties._pi = best);
+}
+// Place chaque étiquette de commune près de son point intérieur, sans chevaucher les postes (cercle + plaque)
+// ni les autres étiquettes : positions candidates en spirale autour du point ; le centre reste toujours dans la commune.
+const mesure = document.createElement("canvas").getContext("2d");
+function placerEtiquettes() {
+  if (!mapL || !etiquettes.length || !$("c-carte").offsetWidth) return;
+  const proj = document.body.classList.contains("projection"), fs = proj ? 13 : 11, fsd = proj ? 12.5 : 10.5;
+  const boites = showPostes ? obstacles.flatMap(o => { const p = mapL.latLngToContainerPoint(o.ll), x = p.x - o.cx0, y = p.y - o.cy0;
+    return [[p.x - o.r, p.y - o.r, p.x + o.r, p.y + o.r], [x + o.x0, y + o.cy0 - 9, x + o.x0 + o.w, y + o.cy0 + 7]]; }) : [];
+  const inter = (a, b) => Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])) * Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const cands = [[0, 0]]; for (let R = 8; R <= 96; R += 8) for (let k = 0; k < 24; k++) { const a = k * Math.PI / 12; cands.push([R * Math.cos(a), R * Math.sin(a) * .8]); }
+  for (const e of etiquettes) {
+    mesure.font = `700 ${fs}px ${getComputedStyle(document.body).getPropertyValue("--f-body")}`;
+    let w = mesure.measureText(e.nom).width + 10, h = fs * 1.45 + 6;
+    if (e.lignes > 1) { mesure.font = `400 ${fsd}px Atkinson Hyperlegible`; w = Math.max(w, mesure.measureText("0,00 MW/km²").width + 10); h += fsd * 1.45; }
+    const c0 = mapL.latLngToContainerPoint(e.ancre); let meilleur = null, cout = Infinity;
+    for (const [dx, dy] of cands) {
+      const x = c0.x + dx, y = c0.y + dy, b = [x - w / 2, y - h / 2, x + w / 2, y + h / 2];
+      const ll = mapL.containerPointToLatLng([x, y]), dedans = e.f.geometry.coordinates.some(pg => dansAnneau(ll.lng, ll.lat, pg[0]));
+      const c = boites.reduce((s, o) => s + inter(b, o), 0) * 10 + (dedans ? 0 : 1e7) + Math.hypot(dx, dy); // l'étiquette reste dans sa commune
+      if (c < cout) { cout = c; meilleur = [x, y, b]; } if (c <= Math.hypot(dx, dy) + 1e-9) break;
+    }
+    boites.push(meilleur[2]);
+    e.m.setLatLng(mapL.containerPointToLatLng([meilleur[0], meilleur[1]]));
+  }
+}
+function fitMap() { const el = $("c-carte"); if (mapFit || !mapL || !el.offsetWidth) return; mapL.invalidateSize();
+  const pts = []; for (const f of GEO.communes.features) for (const poly of f.geometry.coordinates) for (const [lo, la] of poly[0]) pts.push([la, lo]); for (const p of GEO.postes) pts.push([p.lat, p.lon]);
+  mapL.fitBounds(L.latLngBounds(pts), { padding: [24, 24] }); mapFit = true; }
+function applyPostes() {
+  if (showPostes) { if (!mapL.hasLayer(mapPostes)) mapL.addLayer(mapPostes); } else { mapL.removeLayer(mapPostes); $("tip").hidden = true; }
+  const sz = getComputedStyle(document.documentElement).getPropertyValue("--seuil").trim();
+  $("lg-carte").innerHTML = (showPostes
+    ? `<span><i class="a" style="background:var(--accent)"></i>capacité suffisante</span><span><i class="a" style="background:var(--warn)"></i>remplie à plus de 90 %</span><span><i class="a" style="background:var(--ko)"></i>✕ dépassée (hachuré)</span><span>Taille : MW raccordés · Caparéseau, juin 2026</span><span>Lecture : ${showOriente ? "projets orientés vers les postes libres" : "parc étendu à l'identique"}</span>`
+    : `<span>Postes sources masqués</span>`)
+    + (showDens
+      ? `<span><i class="a" style="width:56px;background:linear-gradient(90deg,${hexA(sz, .1)},${hexA(sz, .68)})"></i>densité de puissance ENR du scénario : ${fr(densRange[0], 2)} à ${fr(densRange[1], 2)} MW/km² · surface communale brute, hors contraintes foncières</span>`
+      : `<span>Couleur des communes : puissance solaire + éolien du scénario</span>`);
+}
+function renderCarte() {
+  const el = $("c-carte");
+  if (typeof L === "undefined") { el.innerHTML = '<p class="note" style="padding:16px">Bibliothèque de carte (Leaflet) non chargée : vérifier que le dossier vendor/leaflet/ est présent à côté de index.html.</p>'; return; }
+  const css = getComputedStyle(document.documentElement), v = n => css.getPropertyValue(n).trim();
+  const cSeuil = v("--seuil"), cBocage = v("--bocage"), cAccent = v("--accent"), cWarn = v("--warn"), cKo = v("--ko"), cPanel = v("--panel"), cInk = v("--ink");
+
+  if (!mapL) {
+    mapL = L.map(el, { zoomSnap: 0.25, attributionControl: true }).setView([47.18, -0.88], 10);
+    const attrEsri = "Fond © Esri, HERE, Garmin, OpenStreetMap contributeurs";
+    const esri = (svc, max, attr) => L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/" + svc + "/MapServer/tile/{z}/{y}/{x}", { maxZoom: max, attribution: attr || attrEsri });
+    const fonds = {
+      "OpenStreetMap": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributeurs' }),
+      "Relief (Esri topo)": esri("World_Topo_Map", 19),
+      "Plan clair (Esri gris clair)": esri("Canvas/World_Light_Gray_Base", 16),
+      "Plan (Esri rues)": esri("World_Street_Map", 19),
+      "Sans fond de carte": L.layerGroup()
+    };
+    const defaut = fonds["Plan clair (Esri gris clair)"], sansFond = fonds["Sans fond de carte"], horsLigne = navigator.onLine === false;
+    (horsLigne ? sansFond : defaut).addTo(mapL); el.classList.toggle("map-nobase", horsLigne);
+    L.control.layers(fonds, null, { collapsed: true, position: "topright" }).addTo(mapL);
+    // « Sans fond » : fond uni de panneau ; les contours et les postes suffisent à la lecture.
+    mapL.on("baselayerchange", e => el.classList.toggle("map-nobase", e.layer === sansFond));
+    // Fond injoignable (hors ligne, réseau filtré) : on bascule sans fond, contours et postes restent lisibles.
+    let note = null;
+    const noter = () => { if (note) return; note = document.createElement("div"); note.className = "map-note"; note.textContent = "Fond de carte indisponible (pas d'Internet) : contours et postes affichés seuls."; el.appendChild(note); };
+    if (horsLigne) noter();
+    for (const fond of Object.values(fonds)) if (fond !== sansFond) {
+      let nErr = 0, nOk = 0;
+      fond.on("tileload", () => { nOk++; });
+      fond.on("tileerror", () => { if (++nErr < 4 || nOk > 0 || !mapL.hasLayer(fond)) return;
+        mapL.removeLayer(fond); sansFond.addTo(mapL); el.classList.add("map-nobase"); noter(); });
+    }
+    mapCom = L.layerGroup().addTo(mapL); mapPostes = L.layerGroup().addTo(mapL);
+    mapL.on("zoomend", placerEtiquettes);
+    if (window.ResizeObserver) new ResizeObserver(() => { mapL.invalidateSize(); mapFit = false; fitMap(); placerEtiquettes(); }).observe(el);
+    setTimeout(() => mapL.invalidateSize(), 200);
+  }
+
+  const feats = GEO.communes.features, tip = $("tip");
+  const maxMW = Math.max(...feats.map(f => f.properties.pv_MW * P.m_pv + f.properties.eol_MW * P.m_eol));
+  const dens = f => (f.properties.pv_MW * P.m_pv + f.properties.eol_MW * P.m_eol) / surfaceKm2(f), dArr = feats.map(dens), maxD = Math.max(...dArr);
+  densRange = [Math.min(...dArr), maxD];
+  const moveTip = (e, html) => { tip.hidden = false; tip.style.left = (e.clientX + 14) + "px"; tip.style.top = (e.clientY - 10) + "px"; if (html) tip.innerHTML = html; };
+
+  // Communes : remplissage proportionnel à la puissance ENR du scénario, nom affiché
+  mapCom.clearLayers(); etiquettes = [];
+  for (const f of feats) {
+    const pr = f.properties, mw = pr.pv_MW * P.m_pv + pr.eol_MW * P.m_eol;
+    const km2 = surfaceKm2(f), d = mw / km2, d0 = (pr.pv_MW + pr.eol_MW) / km2;
+    const poly = L.geoJSON(f, { style: showDens ? { color: cSeuil, weight: 1.4, fillColor: cSeuil, fillOpacity: 0.06 + 0.62 * d / maxD } : { color: cBocage, weight: 1.4, fillColor: cBocage, fillOpacity: 0.08 + 0.42 * mw / maxMW } }).addTo(mapCom);
+    const html = `<b>${pr.nom}</b><br>${pr.population.toLocaleString("fr-FR")} habitants · ${fr(km2, 0)} km²<br>parc actuel : ${fr(pr.pv_MW, 1)} MW PV · ${fr(pr.eol_MW, 1)} MW éolien<br>scénario : ${fr(mw, 1)} MW<br>densité de puissance : ${fr(d0, 2)} → <b>${fr(d, 2)} MW/km²</b>`;
+    poly.on("mousemove", e => moveTip(e.originalEvent, html)); poly.on("mouseout", () => { tip.hidden = true; });
+    const [lo, la] = pointInterieur(f);
+    const court = pr.nom.replace(/-(en-Mauges|en-Anjou|sur-Èvre)$/, ""); // nom d'usage sur la carte ; nom complet dans l'info-bulle
+    etiquettes.push({ f, ancre: [la, lo], lignes: showDens ? 2 : 1, nom: court,
+      m: L.marker([la, lo], { interactive: false, keyboard: false, zIndexOffset: 2000, icon: L.divIcon({ className: "commune-lbl", html: `<span class="cl">${court}${showDens ? `<span class="cd">${fr(d, 2)} MW/km²</span>` : ""}</span>`, iconSize: [0, 0] }) }).addTo(mapCom) });
+  }
+
+  // Postes sources : taille = MW raccordés, couleur = taux de remplissage S3REnR, hachuré si dépassé
+  mapPostes.clearLayers(); obstacles = [];
+  const aj = ajoutsPostes(showOriente);
+  for (const p of aj) {
+    const mw = p.pv_MW * P.m_pv + p.eol_MW * P.m_eol, r = 5 + Math.sqrt(mw) * 1.4, ko = p.remplissage > 1.0001;
+    const fill = ko ? `url(#hatch-${p.code})` : p.remplissage > 0.9 ? cWarn : cAccent;
+    const w = p.code.length * 7.2 + 8, Wt = 2 * r + 8 + w + 6, Ht = 2 * r + 6, cy0 = Ht / 2, cx0 = r + 3;
+    const svg = `<svg width="${Wt}" height="${Ht}" viewBox="0 0 ${Wt} ${Ht}">
+      <defs><pattern id="hatch-${p.code}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="${cKo}"/><line x1="0" y1="0" x2="0" y2="5" stroke="${cPanel}" stroke-width="2"/></pattern></defs>
+      <circle cx="${cx0}" cy="${cy0}" r="${r}" fill="${fill}" stroke="${ko ? cKo : cPanel}" stroke-width="2"/>
+      <rect x="${cx0 + r + 3}" y="${cy0 - 9}" width="${w}" height="16" fill="${cPanel}" stroke="${cInk}" rx="2"/>
+      <text x="${cx0 + r + 7}" y="${cy0 + 3}" style="fill:${cInk};font-size:11px;font-family:var(--f-body)">${p.code}</text>
+      <circle cx="${cx0}" cy="${cy0}" r="${r + 8}" fill="transparent"/></svg>`;
+    obstacles.push({ ll: [p.lat, p.lon], cx0, cy0, r: r + 2, x0: cx0 + r + 3, w });
+    const m = L.marker([p.lat, p.lon], { zIndexOffset: ko ? 1000 : 0, keyboard: false, icon: L.divIcon({ className: "poste-ico", html: svg, iconSize: [Wt, Ht], iconAnchor: [cx0, cy0] }) }).addTo(mapPostes);
+    const html = `<b>${p.nom}</b> (${p.code})<br>parc des Mauges : ${fr(p.pv_MW, 1)} MW PV · ${fr(p.eol_MW, 1)} MW éolien<br>capacité réservée S3REnR : ${fr(p.capacite_reservee_MW, 1)} MW<br>restant à affecter : ${fr(p.restant_MW, 1)} MW (${p.taux_remplissage} rempli)<br>ajout du scénario : ${fr(p.ajout, 1)} MW${p.depasse > 0.05 ? ` → <b>dépassement ${fr(p.depasse, 1)} MW</b>` : ""}`;
+    const texte = html.replace(/<br>/g, ". ").replace(/<[^>]+>/g, "");
+    const bind = () => { const node = m.getElement(); if (!node || node._bound) return; node._bound = true;   // l'élément n'existe que lorsque la couche est affichée
+      node.tabIndex = 0; node.setAttribute("role", "button"); node.setAttribute("aria-label", texte);
+      const auClavier = () => { const r = node.getBoundingClientRect(); moveTip({ clientX: r.right, clientY: r.top + r.height / 2 }, html); };
+      node.addEventListener("focus", auClavier); node.addEventListener("blur", () => { tip.hidden = true; });
+      node.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); auClavier(); } if (e.key === "Escape") tip.hidden = true; });
+      node.addEventListener("mousemove", e => moveTip(e, html)); node.addEventListener("mouseleave", () => { tip.hidden = true; }); node.addEventListener("click", e => moveTip(e, html)); };
+    m.on("add", bind); bind();
+  }
+
+  fitMap(); applyPostes(); placerEtiquettes();
+}
+// ---- vue expert
+function renderExpert() {
+  const s = lastSeries, A = ANS[P.annee], d0 = +$("semaine").value * 7 * 24, n = 14 * 24, c = cols();
+  const idx = Array.from({ length: n }, (_, k) => Math.min(d0 + k, A.n - 1));
+  const t0 = Date.UTC(+P.annee, 0, 1), ts = idx.map(i => t0 + i * 3600e3);
+  const E = lastR.bat_energie_MWh, bat = E > 0;
+  const N = { eol: "éolien (+ bio, hydro)", pv: "solaire", conso: "consommation", seuil: "seuil 120 %", soc: "état de charge" };
+  const xy = f => idx.map((i, k) => [ts[k], r1(f(i))]);
+  const area = (name, data, color) => ({ name, type: "line", stack: "prod", symbol: "none", data, lineStyle: { width: 0 }, areaStyle: { color }, emphasis: { disabled: true } });
+  const series = [area(N.eol, xy(i => s.eol[i] + A.autres[i]), hexA(c.eol, .85)), area(N.pv, xy(i => s.pv[i]), hexA(c.pv, .85)),
+    { name: N.seuil, type: "line", symbol: "none", data: xy(i => s.C[i] * 1.2), lineStyle: { color: c.seuil, width: 1.2, type: "dashed" }, itemStyle: { color: c.seuil }, emphasis: { disabled: true } },
+    { name: N.conso, type: "line", symbol: "none", data: xy(i => s.C[i]), lineStyle: { color: c.ink, width: 1.8 }, itemStyle: { color: c.ink }, emphasis: { disabled: true } }];
+  if (bat) series.push({ name: N.soc, type: "line", xAxisIndex: 1, yAxisIndex: 1, symbol: "none", data: xy(i => s.soc[i]), lineStyle: { color: c.bat, width: 2 }, itemStyle: { color: c.bat }, areaStyle: { color: hexA(c.bat, .14) }, emphasis: { disabled: true } });
+  const fmtT = v => { const d = new Date(v); return d.getUTCHours() === 0 ? `${d.getUTCDate()}/${d.getUTCMonth() + 1}` : `${d.getUTCHours()} h`; };
+  const xAx = (gi, labels) => ({ type: "time", gridIndex: gi, boundaryGap: false, axisTick: { show: false }, axisLine: { lineStyle: { color: c.ink3 } },
+    axisLabel: { ...axTxt(c), show: labels, hideOverlap: true, formatter: fmtT }, splitLine: { show: true, lineStyle: { color: c.line2 } }, axisPointer: { show: true } });
+  const H = bat ? 480 : 380, xIdx = bat ? [0, 1] : [0];
+  const opt = { ...ecBase(c), legend: legSel("c-heures", Object.values(N)),
+    grid: bat ? [{ left: 56, right: 16, top: 26, height: 250 }, { left: 56, right: 16, top: 306, height: 84 }] : [{ left: 56, right: 16, top: 26, bottom: 74 }],
+    xAxis: bat ? [xAx(0, false), xAx(1, true)] : [xAx(0, true)],
+    yAxis: [{ type: "value", gridIndex: 0, name: "MW", nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: axTxt(c), splitLine: { lineStyle: { color: c.line2 } } },
+      ...(bat ? [{ type: "value", gridIndex: 1, name: "MWh", min: 0, max: E, interval: E, nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: { ...axTxt(c), formatter: v => fr(v, 0) }, splitLine: { lineStyle: { color: c.line2 } } }] : [])],
+    axisPointer: { link: [{ xAxisIndex: "all" }] },
+    dataZoom: [{ type: "inside", xAxisIndex: xIdx, filterMode: "none", zoomOnMouseWheel: "ctrl", moveOnMouseMove: true, moveOnMouseWheel: false },
+      { type: "slider", xAxisIndex: xIdx, filterMode: "none", height: 22, bottom: 8, brushSelect: false, borderColor: c.line, fillerColor: hexA(c.accent, .16), backgroundColor: "transparent", dataBackground: { lineStyle: { color: c.ink3, opacity: .5 }, areaStyle: { color: c.line2 } }, selectedDataBackground: { lineStyle: { color: c.accent }, areaStyle: { color: hexA(c.accent, .25) } }, handleStyle: { color: c.accent, borderColor: c.accent }, moveHandleStyle: { color: c.ink3 }, textStyle: axTxt(c) }],
+    series };
+  opt.tooltip.formatter = ps => { const k = ps[0].dataIndex, i = idx[k], d = new Date(ts[k]);
+    const when = d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "long", timeZone: "UTC" }) + " · " + String(d.getUTCHours()).padStart(2, "0") + " h UTC";
+    return `<b>${when}</b><br>solaire ${fr(s.pv[i], 0)} MW · éolien ${fr(s.eol[i] + A.autres[i], 0)} MW<br>consommation ${fr(s.C[i], 0)} MW<br>seuil 120 % : ${fr(s.C[i] * 1.2, 0)} MW${bat ? `<br>état de charge ${fr(s.soc[i], 0)} / ${fr(E, 0)} MWh` : ""}`; };
+  $("c-soc").hidden = bat;
+  const dt = new Date(Date.UTC(+P.annee, 0, 1 + A.jour[idx[0]]));
+  $("exp-an").textContent = P.annee;
+  $("v-sem").textContent = dt.toLocaleDateString("fr-FR", { day: "numeric", month: "long" }); $("hx-sub").textContent = `Année ${P.annee}, pas horaire, heure UTC`;
+  setLegend("c-heures", "lg-heures", [[N.eol, "background:var(--s-eol)", "a"], [N.pv, "background:var(--s-pv)", "a"], [N.conso, "background:var(--ink)"], [N.seuil, "background:var(--seuil)"], ...(bat ? [[N.soc, "background:var(--s-bat)"]] : [])]);
+  drawChart("c-heures", opt, H);
+  renderMono(); renderTraj(); renderTornade();
+  const colsT = [["couverture_horaire", "Taux de couverture h/h", 100, 1, "%"], ["couverture", "Prod. / conso", 100, 1, "%"], ["ecretement_part", "Écrêtement", 100, 1, "%"], ["heures_vigilance", "Heures de vigilance", 1, 0, "h"], ["pointe_injection_MW", "Pointe d'injection", 1, 0, "MW"], ["pointe_soutirage_MW", "Pointe d'appel", 1, 0, "MW"], ["surplus_exporte_MWh", "Surplus exporté", 1e-3, 1, "GWh"], ["deficit_importe_MWh", "Achat au réseau", 1e-3, 1, "GWh"], ["bat_cycles", "Cycles batterie", 1, 0, ""]];
+  $("t-annees").innerHTML = `<thead><tr><th>Année</th>${colsT.map(c => `<th style="text-align:right">${c[1]}${c[4] ? ` (${c[4]})` : ""}</th>`).join("")}</tr></thead><tbody>${META.annees.map((a, i) => `<tr${a === P.annee ? ' style="background:var(--accent-weak)"' : ""}><td class="mono">${a}${a === META.annee_typique ? " ·typ." : ""}</td>${colsT.map(c => `<td class="num">${fr(lastAll[i][c[0]] * c[2], c[3])}</td>`).join("")}</tr>`).join("")}</tbody>`;
+}
+// ---- trajectoires (précalcul Python, moyennes 2021-2025) : carte de chaleur solaire × éolien
+const TRAJ = PRECALC.trajectoires, TRAJ_PV = [...new Set(TRAJ.map(t => t.m_pv))].sort((a, b) => a - b), TRAJ_EOL = [...new Set(TRAJ.map(t => t.m_eol))].sort((a, b) => a - b);
+const TRAJ_MIN = Math.min(...TRAJ.map(t => t.couv_h)), TRAJ_MAX = Math.max(...TRAJ.map(t => t.couv_h));
+const LIM_ECR = DEF.ecretement_max;
+let traj = { paquet: "P0 aucune", hz: "actuel" };
+const paquetDe = p => (p.ecs_deplace > 0 ? (p.bat_pilotage !== "aucune" ? "P3 ballons + batterie" : "P1 ballons") : (p.bat_pilotage !== "aucune" ? "P2 batterie" : "P0 aucune"));
+const mult = m => "×" + fr(m, m % 1 ? 2 : 0).replace(/0$/, "");
+// Paramètres qui reproduisent une case : batterie minimale du précalcul (pilotage « pointe ») ramenée en multiple de Ppv
+function paramsTraj(t) {
+  const bat = t.paquet.includes("batterie"), ballons = t.paquet.includes("ballons");
+  const pb = !bat ? DEF.bat_puissance : t.bat_MWh != null ? t.bat_MWh / (t.m_pv * K.Ppv_A * DEF.bat_duree) : META.parametres.bat_puissance.max;
+  return { ...DEF, annee: P.annee, horizon: t.horizon, m_pv: t.m_pv, m_eol: t.m_eol, ecs_deplace: ballons ? 1 : 0, bat_pilotage: bat ? "pointe" : "aucune", bat_puissance: pb };
+}
+function renderTraj() {
+  if (trajSuit) { traj = { paquet: paquetDe(P), hz: P.horizon }; trajSuit = false; }
+  for (const b of $("traj-paquet").children) b.setAttribute("aria-pressed", b.dataset.v === traj.paquet);
+  for (const b of $("traj-hz").children) b.setAttribute("aria-pressed", b.dataset.v === traj.hz);
+  const c = cols(), rows = TRAJ.filter(t => t.paquet === traj.paquet && t.horizon === traj.hz);
+  const ici = TRAJ_PV.findIndex(v => Math.abs(v - P.m_pv) < 1e-6), icj = TRAJ_EOL.findIndex(v => Math.abs(v - P.m_eol) < 1e-6);
+  const surGrille = ici >= 0 && icj >= 0 && paquetDe(P) === traj.paquet && P.horizon === traj.hz;
+  const data = rows.map(t => { const i = TRAJ_PV.indexOf(t.m_pv), j = TRAJ_EOL.indexOf(t.m_eol), k = (t.couv_h - TRAJ_MIN) / (TRAJ_MAX - TRAJ_MIN), ko = t.ecret_max > LIM_ECR + 1e-9;
+    const courant = surGrille && i === ici && j === icj;
+    return { value: [i, j, r1(t.couv_h * 100)], t,
+      label: { color: k > .55 ? c.panel : c.ink, fontWeight: courant ? 700 : 400 },
+      itemStyle: { borderColor: courant ? c.ink : c.panel, borderWidth: courant ? 3 : 1 } }; });
+  // hachures (comme les postes dépassés de la carte) : ajout au-delà des capacités restantes des postes
+  const motif = document.createElement("canvas"); motif.width = motif.height = 7;
+  { const g = motif.getContext("2d"); g.strokeStyle = hexA(c.ink, .4); g.lineWidth = 1.2; g.beginPath(); g.moveTo(-1, 8); g.lineTo(8, -1); g.stroke(); }
+  const hach = data.filter(d => !d.t.postes_ok_placement).map(d => [d.value[0], d.value[1]]);
+  const opt = { ...ecBase(c), grid: { left: 92, right: 16, top: 16, bottom: 52 },
+    xAxis: { type: "category", data: TRAJ_PV.map(m => `${mult(m)}\n${fr(m * K.Ppv_A, 0)} MW`), name: "Solaire (× parc actuel)", nameLocation: "middle", nameGap: 36, nameTextStyle: axTxt(c), axisLabel: axTxt(c), axisTick: { show: false }, axisLine: { show: false }, splitArea: { show: false } },
+    yAxis: { type: "category", data: TRAJ_EOL.map(m => `${mult(m)} · ${fr(m * K.Peol_A, 0)} MW`), name: "Éolien", nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: axTxt(c), axisTick: { show: false }, axisLine: { show: false } },
+    visualMap: { show: false, min: TRAJ_MIN * 100, max: TRAJ_MAX * 100, dimension: 2, inRange: { color: [hexA(c.bocage, .08), c.bocage] } },
+    series: [{ type: "heatmap", data, progressive: 0, emphasis: { itemStyle: { borderColor: c.accent, borderWidth: 2 } },
+      label: { show: true, fontFamily: c.font, fontSize: 12 * FS(), formatter: q => `${q.data.t.ecret_max > LIM_ECR + 1e-9 ? "✕ " : ""}${fr(q.data.t.couv_h * 100, 0)} %` } },
+      { type: "custom", data: hach, silent: true, z: 3, tooltip: { show: false },
+        renderItem: (pr, api) => { const p = api.coord([api.value(0), api.value(1)]), sz = api.size([1, 1]);
+          return { type: "rect", shape: { x: p[0] - sz[0] / 2 + 1, y: p[1] - sz[1] / 2 + 1, width: sz[0] - 2, height: sz[1] - 2 }, style: { fill: { image: motif, repeat: "repeat" } } }; } }] };
+  opt.tooltip = { ...opt.tooltip, trigger: "item", axisPointer: undefined, formatter: q => { const t = q.data.t;
+    return `<b>Solaire ${mult(t.m_pv)} (${fr(t.m_pv * K.Ppv_A, 0)} MW) · éolien ${mult(t.m_eol)} (${fr(t.m_eol * K.Peol_A, 0)} MW)</b><br>taux de couverture ${fr(t.couv_h * 100)} % (moyenne 2021-2025)<br>écrêtement ${fr(t.ecret * 100)} % · pire année ${fr(t.ecret_max * 100)} %${t.ecret_max > LIM_ECR + 1e-9 ? " ✕ au-delà de 5 %" : " ✓"}${t.paquet.includes("batterie") ? `<br>batterie ${t.bat_MWh != null ? `${fr(t.bat_MWh, 0)} MWh, VAN ${fr(t.van_MEUR, 0)} M€` : "introuvable même à 2 × Ppv"}` : ""}<br>${fr(t.ajout_MW, 0)} MW à raccorder : ${t.postes_ok_placement ? "tient dans les capacités restantes des postes" : "dépasse les capacités restantes des postes (hachuré)"}`; } };
+  drawChart("c-traj", opt);
+  const c0 = CH["c-traj"]; if (c0 && c0.chart && !c0.clic) { c0.clic = true; c0.chart.on("click", q => { if (!q.data || !q.data.t) return; P = paramsTraj(q.data.t); presetActif = null; syncControls(); render(); }); }
+  $("lg-traj").innerHTML = `<span><i class="a" style="width:56px;background:linear-gradient(90deg,${hexA(c.bocage, .08)},${c.bocage})"></i>${fr(TRAJ_MIN * 100, 0)} à ${fr(TRAJ_MAX * 100, 0)} %</span><span>✕ écrêtement au-delà de 5 % au moins une année</span><span><i class="a" style="background:repeating-linear-gradient(-45deg,${hexA(c.ink, .35)} 0 1px,transparent 1px 5px);border:1px solid var(--line)"></i>ajout au-delà des capacités restantes des postes</span><span><i class="a" style="background:transparent;box-shadow:inset 0 0 0 2px var(--ink)"></i>scénario affiché</span>`;
+  $("traj-note").textContent = (surGrille ? "" : "Le scénario affiché n'est pas sur cette grille (autre paquet, horizon ou réglage intermédiaire). ") +
+    (traj.paquet.includes("batterie") ? "Batterie : taille minimale pour tenir 5 % chaque année, pilotage « seulement les excès ». " : "") + "Un clic applique le scénario avec les autres hypothèses à leur valeur par défaut. Source : précalcul Python (13_trajectoire.py).";
+}
+for (const [id, k] of [["traj-paquet", "paquet"], ["traj-hz", "hz"]]) for (const b of $(id).children) b.onclick = () => { traj[k] = b.dataset.v; renderTraj(); };
+// ---- sensibilité (tornade, précalcul Python) : écart au scénario de référence quand une hypothèse varie seule
+const TORN = PRECALC.tornade, TORN_NOM = { B: "B + batterie (seulement les excès)", C: "C + batterie (seulement les excès)" };
+let torn = { sc: "B", hz: "actuel", ind: "couverture_horaire" };
+function renderTornade() {
+  for (const [id, k] of [["torn-sc", "sc"], ["torn-hz", "hz"], ["torn-ind", "ind"]]) for (const b of $(id).children) b.setAttribute("aria-pressed", b.dataset.v === torn[k]);
+  const c = cols(), k = torn.ind, rows = TORN.filter(t => t.scenario === torn.sc && t.famille === torn.hz)
+    .map(t => ({ t, bas: (t[k + "_bas"] - t[k + "_ref"]) * 100, haut: (t[k + "_haut"] - t[k + "_ref"]) * 100 }))
+    .sort((a, b) => Math.max(Math.abs(a.bas), Math.abs(a.haut)) - Math.max(Math.abs(b.bas), Math.abs(b.haut)));
+  const ref = rows.length ? rows[0].t[k + "_ref"] * 100 : 0, nomInd = k === "couverture_horaire" ? "taux de couverture" : "écrêtement";
+  const dec = k === "couverture_horaire" ? 1 : 2, m = Math.max(0.01, ...rows.map(o => Math.max(Math.abs(o.bas), Math.abs(o.haut)))) * 1.35;
+  const pts = v => `${v >= 0 ? "+" : "−"}${fr(Math.abs(v), dec)} pt`;
+  const bar = (name, key, color) => ({ name, type: "bar", data: rows.map(o => +o[key].toFixed(dec + 1)), barGap: "15%", barCategoryGap: "32%", itemStyle: { color, borderRadius: 1 },
+    label: { show: true, position: "outside", formatter: q => Math.abs(q.value) >= 0.5 * 10 ** -dec ? pts(q.value) : "", color: c.ink2, fontSize: 11 * FS(), fontFamily: c.font }, emphasis: { disabled: true } });
+  const opt = { ...ecBase(c), legend: { show: false }, grid: { left: 16, right: 56, top: 8, bottom: 30, containLabel: true },
+    xAxis: { type: "value", name: `écart de ${nomInd} (points)`, nameLocation: "middle", nameGap: 24, nameTextStyle: axTxt(c), min: -m, max: m, axisLabel: { ...axTxt(c), formatter: v => (v > 0 ? "+" : v < 0 ? "−" : "") + fr(Math.abs(v), m < 0.4 ? 2 : m < 3 ? 1 : 0) }, splitLine: { lineStyle: { color: c.line2 } } },
+    yAxis: { type: "category", data: rows.map(o => o.t.facteur), axisTick: { show: false }, axisLine: { lineStyle: { color: c.ink } }, axisLabel: { ...axTxt(c), width: 290, overflow: "break" } },
+    series: [bar("valeur basse", "bas", hexA(c.ink3, .6)), bar("valeur haute", "haut", c.accent)] };
+  opt.tooltip.axisPointer = { type: "shadow", shadowStyle: { color: hexA(c.ink3, .1) } };
+  opt.tooltip.formatter = ps => { const o = rows[ps[0].dataIndex], t = o.t, v = x => fr(x * 100, k === "couverture_horaire" ? 1 : 2);
+    return `<b>${t.facteur}</b><br>valeur basse : ${v(t[k + "_bas"])} % (${pts(o.bas)})<br>valeur haute : ${v(t[k + "_haut"])} % (${pts(o.haut)})<br>référence : ${v(t[k + "_ref"])} %`; };
+  drawChart("c-tornade", opt, 70 + rows.length * 34 * FS());
+  $("torn-sub").textContent = `Référence : ${TORN_NOM[torn.sc]}, ${torn.hz === "2035" ? "consommation 2035" : "consommation actuelle"} — ${nomInd} ${fr(ref, k === "couverture_horaire" ? 1 : 2)} % (moyenne 2021-2025).`;
+  $("lg-tornade").innerHTML = `<span><i class="a" style="background:var(--ink-3);opacity:.6"></i>valeur basse (premier terme du libellé)</span><span><i class="a" style="background:var(--accent)"></i>valeur haute (second terme)</span>`;
+}
+for (const [id, key] of [["torn-sc", "sc"], ["torn-hz", "hz"], ["torn-ind", "ind"]]) for (const b of $(id).children) b.onclick = () => { torn[key] = b.dataset.v; renderTornade(); };
+// Méthode et sources : tableau des hypothèses généré depuis META.parametres (valeur par défaut, unité, source)
+function buildMethode(grp) {
+  const val = v => v === META.parametres.annee ? String(v.defaut) : typeof v.defaut === "number" ? fr(v.defaut, Math.min(3, (String(v.pas ?? 1).split(".")[1] || "").length)) : v.defaut;
+  let h = `<thead><tr><th>Hypothèse</th><th style="text-align:right">Valeur par défaut</th><th>Unité</th><th>Source</th></tr></thead><tbody>`, cur = "";
+  for (const v of Object.values(META.parametres)) {
+    if (v.groupe !== cur) { cur = v.groupe; h += `<tr><th colspan="4" scope="colgroup">${grp[cur] || cur}</th></tr>`; }
+    h += `<tr><td>${v.libelle}</td><td class="num">${val(v)}</td><td class="mono">${v.unite || ""}</td><td>${v.source}</td></tr>`;
+  }
+  $("t-hyp").innerHTML = h + "</tbody>"; $("meth-n").textContent = `${Object.keys(META.parametres).length} paramètres`;
+  $("meth-sub").textContent = `Données du ${new Date(META.version_donnees).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}, années météo ${META.annees[0]}-${META.annees[META.annees.length - 1]}. Détail : donnees/JOURNAL_METHODE.md et donnees/SOURCES.md du projet.`;
+}
+// ---- export : CSV au format tableur français (séparateur « ; », virgule décimale, BOM UTF-8) et JSON des paramètres
+function telecharger(nom, contenu, type) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([contenu], { type })); a.download = nom;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const cellule = v => typeof v === "number" ? String(+v.toPrecision(10)).replace(".", ",") : typeof v === "boolean" ? (v ? "oui" : "non") : String(v);
+const csv = lignes => "\ufeff" + lignes.map(l => l.map(cellule).join(";")).join("\r\n") + "\r\n";
+const suffixe = () => (presetActif || "personnalise").replace(/[^a-z0-9_]/gi, "_");
+$("exp-ind").onclick = () => {
+  const cles = Object.keys(lastAll[0]).filter(k => k !== "series");
+  telecharger(`mauges_indicateurs_2021-2025_${suffixe()}.csv`, csv([["annee", ...cles], ...META.annees.map((a, i) => [a, ...cles.map(k => lastAll[i][k])])]), "text/csv;charset=utf-8");
+};
+$("exp-h").onclick = () => {
+  const s = lastSeries, A = ANS[P.annee], t0 = Date.UTC(P.annee, 0, 1);
+  const l = [["heure_utc", "production_MW", "solaire_MW", "eolien_MW", "autres_enr_MW", "consommation_MW", "charge_batterie_MW", "decharge_batterie_MW", "etat_charge_MWh", "injection_nette_MW"]];
+  for (let i = 0; i < A.n; i++) l.push([new Date(t0 + i * 3600e3).toISOString().slice(0, 16) + "Z", s.P[i], s.pv[i], s.eol[i], A.autres[i], s.C[i], s.ch[i], s.dch[i], s.soc[i], s.inj[i]]);
+  telecharger(`mauges_serie_horaire_${P.annee}_${suffixe()}.csv`, csv(l), "text/csv;charset=utf-8");
+};
+$("exp-json").onclick = () => {
+  const params = Object.fromEntries(Object.keys(META.parametres).map(k => [k, P[k]]));
+  telecharger(`mauges_parametres_${suffixe()}.json`, JSON.stringify({ version_donnees: META.version_donnees, scenario: presetActif, parametres: params, ecarts_au_defaut: Object.fromEntries(Object.entries(params).filter(([k, v]) => v !== DEF[k])) }, null, 2), "application/json");
+};
+// ---- monotones de l'année affichée (consommation et injection nette triées par ordre décroissant)
+function renderMono() {
+  const s = lastSeries, c = cols(), tri = a => Float64Array.from(a).sort().reverse(), C = tri(s.C), I = tri(s.inj), n = C.length;
+  const hInj = I.findIndex(v => v <= 0), N = { conso: "consommation", inj: "injection nette" };
+  const xy = a => Array.from(a, (v, i) => [i, r1(v)]);
+  const opt = { ...ecBase(c), legend: legSel("c-mono", Object.values(N)), grid: { left: 56, right: 24, top: 26, bottom: 40 },
+    xAxis: { type: "value", min: 0, max: n, name: "heures de l'année, classées", nameLocation: "middle", nameGap: 26, nameTextStyle: axTxt(c), axisLabel: { ...axTxt(c), formatter: v => fr(v, 0) }, splitLine: { lineStyle: { color: c.line2 } } },
+    yAxis: { type: "value", name: "MW", nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: axTxt(c), splitLine: { lineStyle: { color: c.line2 } } },
+    series: [
+      { name: N.conso, type: "line", symbol: "none", sampling: "lttb", data: xy(C), lineStyle: { color: c.ink, width: 2 }, itemStyle: { color: c.ink }, emphasis: { disabled: true },
+        markPoint: { symbol: "circle", symbolSize: 7, itemStyle: { color: c.ink }, label: { position: "right", color: c.ink, fontSize: 11.5 * FS(), fontFamily: c.font, formatter: `pointe de consommation ${fr(C[0], 0)} MW` }, data: [{ coord: [0, C[0]] }] } },
+      { name: N.inj, type: "line", symbol: "none", sampling: "lttb", data: xy(I), lineStyle: { color: c.accent, width: 2 }, itemStyle: { color: c.accent }, areaStyle: { color: hexA(c.accent, .12), origin: 0 }, emphasis: { disabled: true },
+        markPoint: { symbol: "circle", symbolSize: 7, itemStyle: { color: c.accent }, label: { position: "right", color: c.ink2, fontSize: 11.5 * FS(), fontFamily: c.font, formatter: `pointe d'injection ${fr(I[0], 0)} MW` }, data: [{ coord: [0, I[0]] }] },
+        markLine: { silent: true, symbol: "none", lineStyle: { color: c.ink3, type: "dashed" }, label: { color: c.ink2, fontSize: 11.5 * FS(), fontFamily: c.font },
+          data: [{ yAxis: 0, label: { show: false }, lineStyle: { type: "solid", color: c.ink3 } }, ...(hInj > 0 ? [{ xAxis: hInj, label: { formatter: `${fr(hInj, 0)} h d'injection`, position: "end" } }] : [])] } }] };
+  opt.tooltip.formatter = ps => { const i = ps[0].data[0]; return `<b>${fr(i, 0)}ᵉ heure la plus forte</b><br>consommation ${fr(C[i], 0)} MW<br>injection nette ${fr(I[i], 0)} MW`; };
+  $("mono-sub").textContent = `Année ${P.annee} : ${fr(hInj < 0 ? n : hInj, 0)} heures d'injection nette vers le réseau sur ${fr(n, 0)}, appel maximal au réseau ${fr(-I[n - 1], 0)} MW.`;
+  setLegend("c-mono", "lg-mono", [[N.conso, "background:var(--ink)"], [N.inj, "background:var(--accent)"]]);
+  drawChart("c-mono", opt);
+}
+function buildForm() {
+  const grp = { meteo: "Météo et volume", production: "Production", ecretement: "Écrêtement et seuils", conso: "Consommation 2035", ve: "Véhicules électriques", pac: "Pompes à chaleur", ecs: "Ballons d'eau chaude", batterie: "Batterie", economie: "Économie" };
+  let h = "", cur = "";
+  for (const [k, v] of Object.entries(META.parametres)) {
+    if (v.groupe !== cur) { cur = v.groupe; h += `<div class="grp label">${grp[cur] || cur}</div>`; }
+    if (k === "annee") continue;
+    const ctrl = v.choix ? `<select id="pf-${k}">${v.choix.map(c => `<option>${c}</option>`).join("")}</select>` : `<input type="number" id="pf-${k}" min="${v.min}" max="${v.max}" step="${v.pas}">`;
+    h += `<div class="pf"><label for="pf-${k}">${v.libelle}</label><div class="in">${ctrl}<span class="u">${v.unite || ""}</span></div><small>${v.source}</small></div>`;
+  }
+  $("pform").innerHTML = h; buildMethode(grp);
+  $("pf-prix_achat").closest(".pf").insertAdjacentHTML("beforeend", `<div id="pf-prix-seg"></div>`);
+  for (const k of Object.keys(META.parametres)) { const el = $("pf-" + k); if (!el) continue;
+    el.onchange = () => { const v = META.parametres[k]; let x = v.choix ? el.value : Math.min(v.max, Math.max(v.min, +el.value)); P[k] = x; presetActif = null; syncControls(); syncForm(); render(); }; }
+}
+function syncForm() { for (const [k, v] of Object.entries(META.parametres)) { const el = $("pf-" + k); if (!el) continue; el.value = P[k]; el.classList.toggle("mod", P[k] !== v.defaut); }
+  $("pf-prix-seg").innerHTML = segPrix(); }
+$("reset").onclick = () => appliquerPreset("A");
+$("semaine").oninput = () => renderExpert();
+// ---- vues
+function setVue(v) {
+  vue = v;
+  for (const [name, value] of [["elu", "Élu"], ["demo", "Démo"], ["expert", "Expert"]]) {
+    for (const id of [`t-${name}`, `tb-${name}`]) {
+      const tab = $(id);
+      tab.setAttribute("aria-selected", name === v);
+      tab.setAttribute("aria-label", value);
+    }
+  }
+  $("v-elu").hidden = v === "expert"; $("v-expert").hidden = v !== "expert";
+  document.body.classList.toggle("demo-on", v === "demo");
+  const projOn = document.body.classList.contains("projection");
+  if (v === "demo" && moy) { moy = false; P.annee = META.annee_typique; syncControls(); }
+  if (v === "demo") { if (oriAvantDemo === null) oriAvantDemo = showOriente; demoStep = 0; if (!projOn) { projAuto = true; setProjection(true); } else demoGo(); }
+  else { clearHl(); document.body.classList.remove("demo-carte");
+    if (oriAvantDemo !== null) { showOriente = oriAvantDemo; oriAvantDemo = null; $("ori_on").checked = showOriente; if (mapL && lastR) renderCarte(); }
+    if (projAuto) { projAuto = false; setProjection(false); } }
+  if (v === "expert") { syncForm(); renderExpert(); }
+}
+for (const name of ["elu", "demo", "expert"]) for (const id of [`t-${name}`, `tb-${name}`]) $(id).onclick = () => setVue(name);
+// Rappel des onglets et de l'année en bas d'écran : seulement quand l'en-tête est sorti de l'écran (sinon doublon qui masque le contenu).
+if (window.IntersectionObserver) new IntersectionObserver(([e]) => { const b = $("bottom-controls"), voir = !e.isIntersecting; b.hidden = !voir; b.inert = !voir; }).observe(document.querySelector("header"));
+// ---- démo
+const fmt = (x, d = 1) => fr(x, d);
+let oriAvantDemo = null;
+const DEMO = [
+  { p: "A", h: "Aujourd'hui", t: r => `${fmt(K.Ppv_A + K.Peol_A, 0)} MW de solaire et d'éolien couvrent ${fmt(r.couverture_horaire * 100)} % de la consommation, heure par heure.`,
+    figs: r => [figCouv(r, null, `Parc actuel : ${fmt(K.Ppv_A, 0)} MW de solaire et ${fmt(K.Peol_A, 0)} MW d'éolien.`),
+      { l: "Énergie produite", v: fmt(r.production_MWh / 1000, 0), u: "GWh/an", r: `Soit ${fmt(r.couverture * 100, 0)} % de la consommation de l'année, mais pas aux mêmes heures.` }] },
+  { p: "B", saison: "ete", h: "Doubler le solaire", t: r => `Le taux de couverture monte à ${fmt(r.couverture_horaire * 100)} %, mais ${fmt(r.ecretement_part * 100)} % de la production serait perdue : au-delà de la limite de 5 %.`,
+    figs: (r, av) => [figCouv(r, av), figEcr(r)] },
+  { p: "B_batterie", saison: "ete", h: "Ajouter une grande batterie", t: (r, eco) => !eco ? `Sans batterie : ${fmt(r.ecretement_part * 100)} % d'écrêtement.`
+      : `L'écrêtement est de ${fmt(r.ecretement_part * 100)} %, pour ${fmt(eco.capex / 1e6, 0)} M€ d'investissement et ${fmt(eco.om / 1e6)} M€ d'entretien par an${eco.van < 0 ? " : plus que ce que la batterie fait gagner." : "."}`,
+    figs: (r, av, eco) => [
+      figCouv(r, av, eco && eco.pts > 0.05 ? `Soit ${fmt(eco.capex / 1e6 / eco.pts, 0)} M€ par point de couverture gagné.` : ""), figEcr(r),
+      eco ? { l: "Investissement batterie", v: fmt(eco.capex / 1e6, 0), u: "M€", r: `+ ${fmt(eco.om / 1e6)} M€/an d'entretien, pour un gain de ${fmt(eco.gain / 1e6)} M€/an.`,
+        pill: eco.van < 0 ? ["ko", `✕ Non rentable : VAN ${fmt(eco.van / 1e6, 0)} M€ sur ${P.duree_analyse} ans`] : ["ok", `✓ Rentable : VAN ${fmt(eco.van / 1e6, 0)} M€`] }
+        : { l: "Investissement batterie", v: "0", u: "M€", r: "Aucune batterie dans ce scénario." }] },
+  { p: "reco_sobre", saison: "ete", ref: 0, h: "Miser sur l'éolien et les ballons d'eau chaude", t: r => `${fmt(r.couverture_horaire * 100)} % de taux de couverture et ${fmt(r.ecretement_part * 100)} % d'écrêtement, sous la limite de 5 % chaque année, sans stockage.`,
+    figs: (r, av) => [figCouv(r, av), figEcr(r), { l: "Investissement", v: "0", u: "M€", r: "Sans stockage : éolien +50 %, solaire +25 %, ballons d'eau chaude chauffés à midi.", pill: ["ok", "✓ Aucun investissement de stockage"] }] },
+  { p: "reco_sobre", hl: "b-carte", oriente: true, h: "Où raccorder ?", t: () => { const s = ajoutsPostes().filter(p => p.depasse > 0.5).map(p => p.nom), o = ajoutsPostes(true).filter(p => p.depasse > 0.5).length;
+      return `Étendu à l'identique, le parc saturerait ${liste(s)}. En orientant les nouveaux projets vers les postes libres, ${o ? `${o} poste${o > 1 ? "s restent dépassés" : " reste dépassé"}` : "ils tiennent dans les capacités disponibles"}.`; },
+    figs: () => { const sat = ajoutsPostes().filter(p => p.depasse > 0.5), ori = ajoutsPostes(true).filter(p => p.depasse > 0.5), ajout = Math.max(0, (P.m_pv - 1) * K.Ppv_A) + Math.max(0, (P.m_eol - 1) * K.Peol_A), rest = GEO.postes.reduce((t, p) => t + p.restant_MW, 0);
+      return [{ l: "Puissance à raccorder", v: fmt(ajout, 0), u: "MW", r: `Pour ${fmt(rest, 0)} MW encore disponibles sur les postes sources du territoire.` },
+        { l: "Postes saturés, parc étendu à l'identique", v: fmt(sat.length, 0), u: `sur ${GEO.postes.length}`, pill: sat.length ? ["ko", "✕ Capacités S3REnR dépassées"] : ["ok", "✓ Capacités suffisantes"] },
+        { l: "Postes dépassés, projets orientés", v: fmt(ori.length, 0), u: `sur ${GEO.postes.length}`, pill: ori.length ? ["ko", "✕ Capacité du territoire dépassée"] : ["ok", "✓ Tout tient dans les postes libres"], r: "Carte : lecture « projets orientés vers les postes libres »." }]; } },
+];
+// Chiffres de la scène : taux de couverture avec l'écart à l'étape précédente, écrêtement avec son état
+const ecart = (x, lib) => `${x >= 0 ? "+" : "−"}${fmt(Math.abs(x))} point${Math.abs(x) >= 2 ? "s" : ""} par rapport à ${lib}`;
+const figCouv = (r, av, note) => ({ l: "Taux de couverture (heure par heure)", v: fmt(r.couverture_horaire * 100), u: "%",
+  d: av ? ecart((r.couverture_horaire - av.r.couverture_horaire) * 100, av.lib) : "", r: note || "" });
+const figEcr = r => { const ok = lastAll.every(x => x.conforme);
+  return { l: "Énergie perdue (écrêtement)", v: fmt(r.ecretement_part * 100), u: "%", r: "Limite : 5 % de la production, chaque année météo.",
+    pill: ok ? ["ok", "✓ Sous 5 % chaque année"] : r.conforme ? ["warn", "! Dépassé certaines années"] : ["ko", "✕ Au-delà de 5 %"] }; };
+const resPreset = id => sim({ ...DEF, annee: P.annee, ...PRESETS[id].p }, P.annee);
+function clearHl() { document.querySelectorAll(".hl").forEach(e => e.classList.remove("hl")); }
+$("demo-steps").innerHTML = DEMO.map((d, k) => `<li><button type="button" data-k="${k}" aria-label="Étape ${k + 1} : ${d.h}" title="${d.h}">${k + 1}</button></li>`).join("");
+$("demo-steps").onclick = e => { const b = e.target.closest("button"); if (b) { demoStep = +b.dataset.k; demoGo(); } };
+let demoAv = null;
+function demoRendu() {
+  const d = DEMO[demoStep]; if (!d || !lastR) return;
+  $("demo-p").textContent = d.t(lastR, lastEco);
+  $("demo-figs").innerHTML = d.figs(lastR, demoAv, lastEco).map(f => `<div class="ds-fig"><span class="label">${f.l}</span><div class="v">${f.v}<span class="u">${f.u}</span></div>${f.d ? `<span class="d">${f.d}</span>` : ""}${f.pill ? `<span class="pill ${f.pill[0]}">${f.pill[1]}</span>` : ""}${f.r ? `<span class="r">${f.r}</span>` : ""}</div>`).join("");
+}
+function demoGo() {
+  const d = DEMO[demoStep];
+  // saison de la journée type (été pour les étapes solaires) et lecture de la carte (projets orientés à l'étape 5), sans toucher aux préférences
+  saison = d.saison || "hiver"; showOriente = !!d.oriente; $("ori_on").checked = showOriente; document.body.classList.toggle("demo-carte", !!d.oriente);
+  // écart mesuré par rapport à l'étape de référence (ref) ou à l'étape précédente qui portait un autre scénario
+  const prec = d.ref != null ? { x: DEMO[d.ref], k: d.ref } : DEMO.slice(0, demoStep).map((x, k) => ({ x, k })).reverse().find(o => o.x.p !== d.p);
+  demoAv = prec ? { r: resPreset(prec.x.p), lib: prec.k === 0 ? "aujourd'hui" : `l'étape ${prec.k + 1}` } : null;
+  appliquerPreset(d.p); clearHl();   // le recalcul rappelle demoRendu()
+  for (const b of $("demo-steps").querySelectorAll("button")) { const k = +b.dataset.k; b.classList.toggle("vu", k < demoStep); if (k === demoStep) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current"); }
+  $("demo-h").textContent = d.h;
+  const anim = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  if (d.hl) { $(d.hl).classList.add("hl");
+    scrollTo({ top: Math.max(0, scrollY + $("demo-figs").getBoundingClientRect().top - document.querySelector(".ds-bar").offsetHeight - 10), behavior: anim }); }
+  else scrollTo({ top: Math.max(0, scrollY + $("demo").getBoundingClientRect().top - 8), behavior: anim });
+}
+// ---- mode projection (touche P ou bouton) : texte 18 px, réglages repliés ; l'état de la barre est rétabli à la sortie.
+// En vue Démo, la projection s'active d'elle-même (et se retire en quittant la Démo si c'est elle qui l'a activée).
+let sideAvantProj = null, projAuto = false;
+function setProjection(on) {
+  if (on === document.body.classList.contains("projection")) return;
+  document.body.classList.toggle("projection", on); $("proj").setAttribute("aria-pressed", on);
+  if (on) { sideAvantProj = sideOpen; setSide(false); } else if (sideAvantProj !== null) setSide(sideAvantProj);
+  render(); if (vue === "demo") demoGo();
+}
+$("proj").onclick = () => setProjection(!document.body.classList.contains("projection"));
+$("demo-next").onclick = () => { demoStep = Math.min(DEMO.length - 1, demoStep + 1); demoGo(); };
+$("demo-prev").onclick = () => { demoStep = Math.max(0, demoStep - 1); demoGo(); };
+document.addEventListener("keydown", e => { if (e.target.closest("input,select,textarea")) return;
+  if ((e.key === "p" || e.key === "P") && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); $("proj").click(); return; }
+  if (vue === "demo" && (e.key === "ArrowRight" || e.key === " ")) { e.preventDefault(); $("demo-next").click(); }
+  if (vue === "demo" && e.key === "ArrowLeft") $("demo-prev").click();
+  if (vue === "demo" && /^[1-9]$/.test(e.key) && +e.key <= DEMO.length) { demoStep = +e.key - 1; demoGo(); }
+});
+// ---- lien partageable : les paramètres qui s'écartent des valeurs par défaut sont écrits dans le #hash
+// (ex. #m_pv=2&bat_pilotage=pointe) ; au chargement, valeurs inconnues ignorées et valeurs hors bornes ramenées dans les bornes.
+function lireLien() {
+  const h = location.hash.replace(/^#/, ""); if (!h) return;
+  const ajust = [];
+  for (const [k, brut] of new URLSearchParams(h)) {
+    const def = META.parametres[k]; if (!def) { ajust.push(k); continue; }
+    if (k === "annee" && brut === "moy") { moy = true; P.annee = META.annee_typique; continue; }
+    if (def.choix) { if (def.choix.includes(brut)) P[k] = brut; else ajust.push(def.libelle); continue; }
+    let x = Number(brut); if (!isFinite(x)) { ajust.push(def.libelle); continue; }
+    const borne = Math.min(def.max ?? x, Math.max(def.min ?? x, x)); if (borne !== x) ajust.push(def.libelle);
+    P[k] = k === "annee" ? (META.annees.includes(Math.round(borne)) ? Math.round(borne) : META.annee_typique) : borne;
+  }
+  presetActif = Object.keys(PRESETS).find(id => Object.keys(META.parametres).every(k => ({ ...DEF, annee: P.annee, ...PRESETS[id].p })[k] === P[k])) || null;
+  if (ajust.length) { $("lien-txt").textContent = `Le lien contenait des valeurs hors limites ou inconnues (${ajust.join(", ")}) : elles ont été ajustées ou ignorées.`; $("lien-note").hidden = false; }
+}
+function ecrireLien() {
+  const q = new URLSearchParams(); for (const k of Object.keys(META.parametres)) if (P[k] !== DEF[k]) q.set(k, P[k]);
+  if (moy) q.set("annee", "moy");
+  const h = q.toString(); try { history.replaceState(null, "", h ? "#" + h : location.pathname + location.search); } catch (e) { /* file:// sans history : on garde l'adresse */ }
+}
+$("lien-ok").onclick = () => { $("lien-note").hidden = true; };
+$("copier-lien").onclick = async () => {
+  ecrireLien(); const url = location.href, b = $("copier-lien");
+  let ok = false; try { await navigator.clipboard.writeText(url); ok = true; } catch (e) {
+    const t = document.createElement("textarea"); t.value = url; document.body.appendChild(t); t.select(); try { ok = document.execCommand("copy"); } catch (e2) { ok = false; } t.remove(); }
+  b.textContent = ok ? "Lien copié" : "Copie impossible : copier l'adresse de la page"; setTimeout(() => { b.textContent = "Copier le lien du scénario"; }, 2500);
+};
+lireLien();
+buildForm(); syncControls(); render();
+})();
+</script>
