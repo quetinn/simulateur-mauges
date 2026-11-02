@@ -12,9 +12,14 @@ Projet 2 « Intégration des ENR », cours Smart Grids, ESIEE Paris, 2026.
 
 ## Utilisation
 - **Élu** : préréglages, curseurs de production et de solutions, indicateurs, verdict, journée type, carte, bilan mensuel.
-- **Démo** : parcours en 5 étapes pour la soutenance (→, espace ou boutons ; ← pour revenir).
-- **Expert** : deux semaines heure par heure, toutes les hypothèses (formulaire), indicateurs 2021-2025.
+- **Démo** : parcours en 5 étapes pour la soutenance (→, espace, touches 1 à 5 ou boutons ; ← pour revenir).
+  Le mode projection s'active tout seul.
+- **Expert** : deux semaines heure par heure, monotones, trajectoires (carte de chaleur cliquable), sensibilité
+  (tornade), toutes les hypothèses (formulaire), indicateurs 2021-2025 avec export CSV / JSON, méthode et sources.
 - **Touche P** (ou bouton « Projection ») : mode projection, texte 18 px et réglages repliés.
+- **Année météo** : 2021 à 2025, ou « 2021-2025 (moyenne) » pour des indicateurs moyens.
+- **Lien du scénario** : les réglages modifiés sont dans l'adresse (`#m_pv=2&bat_pilotage=pointe`) ;
+  bouton « Copier le lien du scénario ».
 - Bouton (i) de chaque indicateur : définition, unité et source.
 
 ## Fichiers
@@ -22,10 +27,12 @@ Projet 2 « Intégration des ENR », cours Smart Grids, ESIEE Paris, 2026.
 |---|---|
 | `index.html` | Interface et moteur de calcul (bloc `const MOTEUR`, identique à `../maquette/maquette.html`, **ne pas modifier**) |
 | `data.js` | Données (`META`, `GEO`, `BIN`) produites par `donnees/scripts/14_export_simulateur.py`, **ne pas modifier à la main** |
+| `precalcul.js` | Trajectoires et tornade (`PRECALC`), généré par `scripts/precalcul_js.mjs` depuis `../public/data/precalcul.json` |
 | `vendor/leaflet/` | Leaflet 1.9.4 (carte) |
 | `vendor/echarts/` | Apache ECharts 5.5.1 (graphiques) |
 | `vendor/fonts/` | Archivo, Atkinson Hyperlegible, IBM Plex Mono (licence SIL OFL) |
 | `scripts/captures.mjs` | Outil de développement : captures Playwright (non nécessaire à l'application) |
+| `scripts/precalcul_js.mjs` | Outil de développement : régénère `precalcul.js` (`node app/scripts/precalcul_js.mjs`) |
 | `captures/` | Captures de contrôle avant / après chaque tâche (non nécessaire à l'application) |
 
 L'application n'utilise ni `fetch`, ni modules ES, ni CDN : elle fonctionne aussi bien en `file://` qu'en `https://`.
