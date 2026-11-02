@@ -119,6 +119,13 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;background:var(--pane
 .seg-prix button{white-space:nowrap;padding-inline:8px;font-size:12.5px}
 body.projection .seg-prix button{font-size:15px}
 .bandeau{margin:0;padding:10px 12px;border:1px solid var(--warn);background:var(--warn-bg);border-radius:4px;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.meth{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px 32px;margin-bottom:12px}
+.meth h3,.meth-hyp h3{font-size:16px;margin:0 0 6px;display:inline}
+.meth section h3{display:block}
+.meth ol,.meth ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:5px;font-size:14px;max-width:72ch}
+.meth-hyp summary{cursor:pointer;padding:6px 0}
+#t-hyp td:nth-child(2){white-space:nowrap}
+#t-hyp td:last-child{color:var(--ink-2);font-size:12.5px;min-width:280px}
 .ctl-row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
 .ctl-row .seg{min-width:0}
 .ctl-row .seg button{white-space:nowrap;padding-inline:10px}
@@ -430,6 +437,30 @@ body.projection .commune-lbl .cl{font-size:13px}
   <div class="panel card" id="b-hyp"><div class="card-h"><div><h2>Toutes les hypothèses</h2><p>Formulaire généré depuis le schéma des paramètres exporté par Python (valeur, bornes, unité, source). Les valeurs modifiées sont surlignées.</p></div>
     <button class="linkbtn" id="reset">Tout réinitialiser</button></div>
     <div class="pform" id="pform"></div></div>
+  <div class="panel card" id="b-methode"><div class="card-h"><div><h2>Méthode et sources</h2><p id="meth-sub"></p></div></div>
+    <div class="meth">
+      <section><h3>Traitement des données</h3>
+        <ol class="meth-etapes">
+          <li><b>Collecte.</b> Consommation annuelle des Mauges (ODRÉ, par EPCI), courbes régionales au pas 30 min (RTE Eco2Mix, Enedis), registre des installations au 31/12/2025 (ODRÉ), températures (Météo-France), postes sources (Caparéseau), population et logements (INSEE).</li>
+          <li><b>Pas horaire.</b> Séries converties en UTC, moyennées (puissances) ou sommées (énergies) par heure ; trous de 2 h au plus interpolés, au-delà signalés.</li>
+          <li><b>Volumes annuels.</b> Consommation mesurée 2021-2024 ; 2025 estimée en suivant l'évolution régionale ; parts sectorielles moyennes 2021-2023.</li>
+          <li><b>Forme horaire de la consommation.</b> Profil régional (2021-2023) ou profils sectoriels Enedis (2024-2025) ; la part raccordée au réseau de transport (RTE) en profil plat.</li>
+          <li><b>Production.</b> Facteurs de charge régionaux calibrés sur la production réelle du parc local (solaire × 0,867, éolien × 0,833) ; parc au 31/12/2025 appliqué aux cinq années météo.</li>
+          <li><b>Contrôles et export.</b> 13 contrôles de cohérence, moteur de référence Python, puis export du paquet de données et des 135 cas de référence qui valident ce simulateur.</li>
+        </ol></section>
+      <section><h3>Limites du modèle</h3>
+        <ul class="meth-limites">
+          <li>Consommation reconstruite : volume local mesuré, forme horaire régionale.</li>
+          <li>Production calibrée sur le registre des installations.</li>
+          <li>Batterie pilotée par des règles simples, sans optimisation.</li>
+          <li>Flexibilités (ballons, VE) placées jour par jour, sans report d'un jour sur l'autre.</li>
+          <li>Pompes à chaleur à COP constant.</li>
+          <li>Réseau non modélisé au-delà des postes sources ; capacités S3REnR partagées avec les territoires voisins.</li>
+          <li>Économie simplifiée : base officielle (NREL 2025, RTE, CRE), fiche Projet 6 en sensibilité.</li>
+        </ul></section>
+    </div>
+    <details class="meth-hyp" open><summary><h3>Hypothèses du simulateur (<span id="meth-n"></span>)</h3></summary>
+      <div class="tbl"><table id="t-hyp"></table></div></details></div>
   <div class="panel card" id="b-annees"><div class="card-h"><div><h2>Indicateurs 2021-2025</h2><p>Chaque année météo simulée séparément, sans moyenner les profils</p></div></div>
     <div class="tbl"><table id="t-annees"></table></div></div>
 </main>
@@ -908,7 +939,7 @@ let mapL = null, mapCom = null, mapPostes = null, mapFit = false;
 const BLOCS = [
   ["Textes", [["b-resume", "Résumé du scénario"], ["b-verdict", "Verdict"]]],
   ["Graphiques et carte", [["b-jour", "Journée type"], ["b-carte", "Carte : communes et postes sources"], ["b-mois", "Bilan mois par mois"]]],
-  ["Vue expert", [["b-heures", "Deux semaines heure par heure"], ["b-traj", "Trajectoires"], ["b-tornade", "Sensibilité (tornade)"], ["b-hyp", "Toutes les hypothèses"], ["b-annees", "Indicateurs 2021-2025"]]]
+  ["Vue expert", [["b-heures", "Deux semaines heure par heure"], ["b-traj", "Trajectoires"], ["b-tornade", "Sensibilité (tornade)"], ["b-hyp", "Toutes les hypothèses"], ["b-annees", "Indicateurs 2021-2025"], ["b-methode", "Méthode et sources"]]]
 ];
 const MENU_IDS = BLOCS.flatMap(g => g[1].map(x => x[0]));
 const KPI_IDS = ["k-prod", "k-auto", "k-surplus", "k-deficit","k-ecr", "k-vig", "k-pointes", "k-cout"];
@@ -1238,6 +1269,17 @@ function renderTornade() {
   $("lg-tornade").innerHTML = `<span><i class="a" style="background:var(--ink-3);opacity:.6"></i>valeur basse (premier terme du libellé)</span><span><i class="a" style="background:var(--accent)"></i>valeur haute (second terme)</span>`;
 }
 for (const [id, key] of [["torn-sc", "sc"], ["torn-hz", "hz"], ["torn-ind", "ind"]]) for (const b of $(id).children) b.onclick = () => { torn[key] = b.dataset.v; renderTornade(); };
+// Méthode et sources : tableau des hypothèses généré depuis META.parametres (valeur par défaut, unité, source)
+function buildMethode(grp) {
+  const val = v => v === META.parametres.annee ? String(v.defaut) : typeof v.defaut === "number" ? fr(v.defaut, Math.min(3, (String(v.pas ?? 1).split(".")[1] || "").length)) : v.defaut;
+  let h = `<thead><tr><th>Hypothèse</th><th style="text-align:right">Valeur par défaut</th><th>Unité</th><th>Source</th></tr></thead><tbody>`, cur = "";
+  for (const v of Object.values(META.parametres)) {
+    if (v.groupe !== cur) { cur = v.groupe; h += `<tr><th colspan="4" scope="colgroup">${grp[cur] || cur}</th></tr>`; }
+    h += `<tr><td>${v.libelle}</td><td class="num">${val(v)}</td><td class="mono">${v.unite || ""}</td><td>${v.source}</td></tr>`;
+  }
+  $("t-hyp").innerHTML = h + "</tbody>"; $("meth-n").textContent = `${Object.keys(META.parametres).length} paramètres`;
+  $("meth-sub").textContent = `Données du ${new Date(META.version_donnees).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}, années météo ${META.annees[0]}-${META.annees[META.annees.length - 1]}. Détail : donnees/JOURNAL_METHODE.md et donnees/SOURCES.md du projet.`;
+}
 function buildForm() {
   const grp = { meteo: "Météo et volume", production: "Production", ecretement: "Écrêtement et seuils", conso: "Consommation 2035", ve: "Véhicules électriques", pac: "Pompes à chaleur", ecs: "Ballons d'eau chaude", batterie: "Batterie", economie: "Économie" };
   let h = "", cur = "";
@@ -1247,7 +1289,7 @@ function buildForm() {
     const ctrl = v.choix ? `<select id="pf-${k}">${v.choix.map(c => `<option>${c}</option>`).join("")}</select>` : `<input type="number" id="pf-${k}" min="${v.min}" max="${v.max}" step="${v.pas}">`;
     h += `<div class="pf"><label for="pf-${k}">${v.libelle}</label><div class="in">${ctrl}<span class="u">${v.unite || ""}</span></div><small>${v.source}</small></div>`;
   }
-  $("pform").innerHTML = h;
+  $("pform").innerHTML = h; buildMethode(grp);
   $("pf-prix_achat").closest(".pf").insertAdjacentHTML("beforeend", `<div id="pf-prix-seg"></div>`);
   for (const k of Object.keys(META.parametres)) { const el = $("pf-" + k); if (!el) continue;
     el.onchange = () => { const v = META.parametres[k]; let x = v.choix ? el.value : Math.min(v.max, Math.max(v.min, +el.value)); P[k] = x; presetActif = null; syncControls(); syncForm(); render(); }; }
