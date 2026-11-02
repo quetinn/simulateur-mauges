@@ -759,7 +759,7 @@ function render() {
   lastR = r; lastAll = all; lastSeries = r.series; lastEco = eco;
   renderOneline(r); renderKpis(r, all, eco); renderVerdict(r, all, eco); renderJour(r.series); renderCarte(); renderMois(r.series);
   if (vue === "expert") { syncForm(); renderExpert(); }
-  applyVis(); ecrireLien();
+  applyVis(); ecrireLien(); if (vue === "demo") demoRendu();
   $("hz_note").textContent = P.horizon === "2035" ? `${fr(r.ve_nb, 0)} VE · ${fr(r.pac_nb, 0)} logements en PAC · ${fr(r.consommation_MWh / 1000, 0)} GWh/an` : `Consommation mesurée de l'année (${fr(r.consommation_MWh / 1000, 0)} GWh).`;
 }
 const rng = (all, k, f = 100, d = 1) => { const v = all.map(r => r[k] * f); return `${fr(Math.min(...v), d)}–${fr(Math.max(...v), d)}`; };
@@ -1412,11 +1412,13 @@ const DEMO = [
       { l: "Énergie produite", v: fmt(r.production_MWh / 1000, 0), u: "GWh/an", r: `Soit ${fmt(r.couverture * 100, 0)} % de la consommation de l'année, mais pas aux mêmes heures.` }] },
   { p: "B", saison: "ete", h: "Doubler le solaire", t: r => `Le taux de couverture monte à ${fmt(r.couverture_horaire * 100)} %, mais ${fmt(r.ecretement_part * 100)} % de la production serait perdue : au-delà de la limite de 5 %.`,
     figs: (r, av) => [figCouv(r, av), figEcr(r)] },
-  { p: "B_batterie", saison: "ete", h: "Ajouter une grande batterie", t: r => `L'écrêtement retombe à ${fmt(r.ecretement_part * 100)} %… pour ${fmt(r.capex_batterie_EUR / 1e6, 0)} M€ d'investissement et ${fmt(r.om_annuel_EUR / 1e6)} M€ d'entretien par an : plus que ce que la batterie fait gagner.`,
+  { p: "B_batterie", saison: "ete", h: "Ajouter une grande batterie", t: (r, eco) => !eco ? `Sans batterie : ${fmt(r.ecretement_part * 100)} % d'écrêtement.`
+      : `L'écrêtement est de ${fmt(r.ecretement_part * 100)} %, pour ${fmt(eco.capex / 1e6, 0)} M€ d'investissement et ${fmt(eco.om / 1e6)} M€ d'entretien par an${eco.van < 0 ? " : plus que ce que la batterie fait gagner." : "."}`,
     figs: (r, av, eco) => [
-      { l: "Investissement batterie", v: fmt(eco.capex / 1e6, 0), u: "M€", r: `+ ${fmt(eco.om / 1e6)} M€/an d'entretien, pour un gain de ${fmt(eco.gain / 1e6)} M€/an.`,
-        pill: eco.van < 0 ? ["ko", `✕ Non rentable : VAN ${fmt(eco.van / 1e6, 0)} M€ sur ${P.duree_analyse} ans`] : ["ok", `✓ Rentable : VAN ${fmt(eco.van / 1e6, 0)} M€`] },
-      figCouv(r, av, eco.pts > 0.05 ? `Soit ${fmt(eco.capex / 1e6 / eco.pts, 0)} M€ par point de couverture gagné.` : ""), figEcr(r)] },
+      figCouv(r, av, eco && eco.pts > 0.05 ? `Soit ${fmt(eco.capex / 1e6 / eco.pts, 0)} M€ par point de couverture gagné.` : ""), figEcr(r),
+      eco ? { l: "Investissement batterie", v: fmt(eco.capex / 1e6, 0), u: "M€", r: `+ ${fmt(eco.om / 1e6)} M€/an d'entretien, pour un gain de ${fmt(eco.gain / 1e6)} M€/an.`,
+        pill: eco.van < 0 ? ["ko", `✕ Non rentable : VAN ${fmt(eco.van / 1e6, 0)} M€ sur ${P.duree_analyse} ans`] : ["ok", `✓ Rentable : VAN ${fmt(eco.van / 1e6, 0)} M€`] }
+        : { l: "Investissement batterie", v: "0", u: "M€", r: "Aucune batterie dans ce scénario." }] },
   { p: "reco_sobre", saison: "ete", ref: 0, h: "Miser sur l'éolien et les ballons d'eau chaude", t: r => `${fmt(r.couverture_horaire * 100)} % de taux de couverture et ${fmt(r.ecretement_part * 100)} % d'écrêtement, sous la limite de 5 % chaque année, sans stockage.`,
     figs: (r, av) => [figCouv(r, av), figEcr(r), { l: "Investissement", v: "0", u: "M€", r: "Sans stockage : éolien +50 %, solaire +25 %, ballons d'eau chaude chauffés à midi.", pill: ["ok", "✓ Aucun investissement de stockage"] }] },
   { p: "reco_sobre", hl: "b-carte", oriente: true, h: "Où raccorder ?", t: () => { const s = ajoutsPostes().filter(p => p.depasse > 0.5).map(p => p.nom), o = ajoutsPostes(true).filter(p => p.depasse > 0.5).length;
@@ -1437,17 +1439,22 @@ const resPreset = id => sim({ ...DEF, annee: P.annee, ...PRESETS[id].p }, P.anne
 function clearHl() { document.querySelectorAll(".hl").forEach(e => e.classList.remove("hl")); }
 $("demo-steps").innerHTML = DEMO.map((d, k) => `<li><button type="button" data-k="${k}" aria-label="Étape ${k + 1} : ${d.h}" title="${d.h}">${k + 1}</button></li>`).join("");
 $("demo-steps").onclick = e => { const b = e.target.closest("button"); if (b) { demoStep = +b.dataset.k; demoGo(); } };
+let demoAv = null;
+function demoRendu() {
+  const d = DEMO[demoStep]; if (!d || !lastR) return;
+  $("demo-p").textContent = d.t(lastR, lastEco);
+  $("demo-figs").innerHTML = d.figs(lastR, demoAv, lastEco).map(f => `<div class="ds-fig"><span class="label">${f.l}</span><div class="v">${f.v}<span class="u">${f.u}</span></div>${f.d ? `<span class="d">${f.d}</span>` : ""}${f.pill ? `<span class="pill ${f.pill[0]}">${f.pill[1]}</span>` : ""}${f.r ? `<span class="r">${f.r}</span>` : ""}</div>`).join("");
+}
 function demoGo() {
   const d = DEMO[demoStep];
   // saison de la journée type (été pour les étapes solaires) et lecture de la carte (projets orientés à l'étape 5), sans toucher aux préférences
   saison = d.saison || "hiver"; showOriente = !!d.oriente; $("ori_on").checked = showOriente; document.body.classList.toggle("demo-carte", !!d.oriente);
-  appliquerPreset(d.p); clearHl();
   // écart mesuré par rapport à l'étape de référence (ref) ou à l'étape précédente qui portait un autre scénario
   const prec = d.ref != null ? { x: DEMO[d.ref], k: d.ref } : DEMO.slice(0, demoStep).map((x, k) => ({ x, k })).reverse().find(o => o.x.p !== d.p);
-  const av = prec ? { r: resPreset(prec.x.p), lib: prec.k === 0 ? "aujourd'hui" : `l'étape ${prec.k + 1}` } : null;
+  demoAv = prec ? { r: resPreset(prec.x.p), lib: prec.k === 0 ? "aujourd'hui" : `l'étape ${prec.k + 1}` } : null;
+  appliquerPreset(d.p); clearHl();   // le recalcul rappelle demoRendu()
   for (const b of $("demo-steps").querySelectorAll("button")) { const k = +b.dataset.k; b.classList.toggle("vu", k < demoStep); if (k === demoStep) b.setAttribute("aria-current", "step"); else b.removeAttribute("aria-current"); }
-  $("demo-h").textContent = d.h; $("demo-p").textContent = d.t(lastR);
-  $("demo-figs").innerHTML = d.figs(lastR, av, lastEco).map(f => `<div class="ds-fig"><span class="label">${f.l}</span><div class="v">${f.v}<span class="u">${f.u}</span></div>${f.d ? `<span class="d">${f.d}</span>` : ""}${f.pill ? `<span class="pill ${f.pill[0]}">${f.pill[1]}</span>` : ""}${f.r ? `<span class="r">${f.r}</span>` : ""}</div>`).join("");
+  $("demo-h").textContent = d.h;
   const anim = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
   if (d.hl) { $(d.hl).classList.add("hl");
     scrollTo({ top: Math.max(0, scrollY + $("demo-figs").getBoundingClientRect().top - document.querySelector(".ds-bar").offsetHeight - 10), behavior: anim }); }
