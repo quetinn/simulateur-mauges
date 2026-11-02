@@ -168,7 +168,7 @@ svg text{font-family:var(--f-mono);font-size:10.5px;fill:var(--ink-3)}
 svg .lbl{font-family:var(--f-body);font-size:11.5px;fill:var(--ink-2)}
 .chart{width:100%;height:auto;display:block}
 .ec{width:100%;min-height:200px}
-.legend button{background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;border-radius:2px}
+.legend button{min-height:24px;background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;cursor:pointer;display:inline-flex;align-items:center;border-radius:2px}
 .legend button:hover{color:var(--ink)}
 .legend button.off{opacity:.45;text-decoration:line-through}
 .legend button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -220,6 +220,8 @@ svg .lbl{font-family:var(--f-body);font-size:11.5px;fill:var(--ink-2)}
 .grid{transition:grid-template-columns .25s ease}
 .rail-tools{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;position:sticky;top:12px;z-index:10;align-self:start}
 .rail-tools button{border:1px solid var(--line);background:var(--panel);color:var(--ink-2);width:28px;height:28px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+/* « Réglages » : chevron ; « Affichage » : œil (même icône que pour masquer un indicateur), état ouvert = bouton foncé */
+#menu-toggle[aria-expanded="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 .rail-tools button:hover{background:var(--line-2);color:var(--ink)}
 .rail-tools button svg{display:block;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 #side,#disp{min-width:0;max-height:calc(100vh - 24px);overflow:auto;scrollbar-width:thin;transition:opacity .2s ease}
@@ -252,6 +254,7 @@ body:not(.disp-open) #disp .side-h>.label{display:none}
 .map .leaflet-control-layers{font-family:var(--f-body);font-size:12.5px}
 .poste-ico{background:none;border:0}
 .poste-ico svg{overflow:visible;display:block;cursor:pointer}
+.poste-ico:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
 .commune-lbl{background:none;border:0}
 .commune-lbl .cl{display:inline-block;white-space:nowrap;transform:translate(-50%,-50%);padding:2px 4px;border-radius:2px;background:var(--panel);font-family:var(--f-body);font-weight:700;font-size:11px;color:var(--ink);pointer-events:none}
 .map-note{position:absolute;left:8px;bottom:22px;z-index:800;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:3px 8px;font-size:12px;color:var(--ink-2)}
@@ -330,7 +333,7 @@ body.projection .commune-lbl .cl{font-size:13px}
 <div class="grid">
 <div class="rail-tools" aria-label="Ouvrir ou replier les barres latérales">
   <button type="button" id="side-toggle" aria-expanded="true" aria-controls="side" aria-label="Replier les réglages" title="Replier les réglages"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path id="side-chevron" d="M10 3L5 8l5 5"/></svg></button>
-  <button type="button" id="menu-toggle" aria-expanded="false" aria-controls="disp" aria-label="Afficher les éléments" title="Afficher les éléments"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path id="menu-chevron" d="M10 3L5 8l5 5"/></svg></button>
+  <button type="button" id="menu-toggle" aria-expanded="false" aria-controls="disp" aria-label="Afficher les éléments" title="Afficher les éléments"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M1 8s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5z"/><circle cx="8" cy="8" r="2"/><path id="menu-chevron" d="M0 0" hidden/></svg></button>
 </div>
 <aside id="side" aria-label="Réglages du simulateur">
   <div class="side-h"><span class="label">Réglages</span></div>
@@ -929,7 +932,7 @@ function renderJour(s) {
     { name: N.conso, type: "line", symbol: "none", data: Array.from(j.C, r1), lineStyle: { color: c.ink, width: 2.2 }, itemStyle: { color: c.ink },
       endLabel: { show: true, formatter: "consommation", color: c.ink, fontSize: 11.5 * FS(), fontFamily: c.font }, emphasis: { disabled: true } }
   ];
-  const opt = { ...ecBase(c), legend: legSel("c-jour", names), grid: { left: 46, right: 98, top: 26, bottom: 28 },
+  const opt = { ...ecBase(c), legend: legSel("c-jour", names), grid: { left: 46, right: Math.round(108 * FS()), top: 26, bottom: 28 },
     xAxis: { type: "category", data: HH.map(h => h + " h"), boundaryGap: bat, axisTick: { show: false }, axisLine: { onZero: false, lineStyle: { color: c.ink3 } },
       axisLabel: { ...axTxt(c), interval: i => [0, 6, 12, 18, 23].includes(i) } },
     yAxis: { type: "value", name: "MW", nameTextStyle: { ...axTxt(c), align: "right" }, axisLabel: axTxt(c), splitLine: { lineStyle: { color: c.line2 } } },
@@ -1183,7 +1186,12 @@ function renderCarte() {
     obstacles.push({ ll: [p.lat, p.lon], cx0, cy0, r: r + 2, x0: cx0 + r + 3, w });
     const m = L.marker([p.lat, p.lon], { zIndexOffset: ko ? 1000 : 0, keyboard: false, icon: L.divIcon({ className: "poste-ico", html: svg, iconSize: [Wt, Ht], iconAnchor: [cx0, cy0] }) }).addTo(mapPostes);
     const html = `<b>${p.nom}</b> (${p.code})<br>parc des Mauges : ${fr(p.pv_MW, 1)} MW PV · ${fr(p.eol_MW, 1)} MW éolien<br>capacité réservée S3REnR : ${fr(p.capacite_reservee_MW, 1)} MW<br>restant à affecter : ${fr(p.restant_MW, 1)} MW (${p.taux_remplissage} rempli)<br>ajout du scénario : ${fr(p.ajout, 1)} MW${p.depasse > 0.05 ? ` → <b>dépassement ${fr(p.depasse, 1)} MW</b>` : ""}`;
+    const texte = html.replace(/<br>/g, ". ").replace(/<[^>]+>/g, "");
     const bind = () => { const node = m.getElement(); if (!node || node._bound) return; node._bound = true;   // l'élément n'existe que lorsque la couche est affichée
+      node.tabIndex = 0; node.setAttribute("role", "button"); node.setAttribute("aria-label", texte);
+      const auClavier = () => { const r = node.getBoundingClientRect(); moveTip({ clientX: r.right, clientY: r.top + r.height / 2 }, html); };
+      node.addEventListener("focus", auClavier); node.addEventListener("blur", () => { tip.hidden = true; });
+      node.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); auClavier(); } if (e.key === "Escape") tip.hidden = true; });
       node.addEventListener("mousemove", e => moveTip(e, html)); node.addEventListener("mouseleave", () => { tip.hidden = true; }); node.addEventListener("click", e => moveTip(e, html)); };
     m.on("add", bind); bind();
   }
