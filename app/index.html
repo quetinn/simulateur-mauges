@@ -400,10 +400,13 @@ body.projection .commune-lbl .cl{font-size:13px}
       <div class="maptogs">
         <div class="maptog"><span id="postes_lbl">Postes sources</span><label class="switch"><input type="checkbox" id="postes_on" checked aria-labelledby="postes_lbl"><span></span></label>
           <button type="button" class="map-info" aria-expanded="false" aria-controls="postes-info" aria-label="Comment est estimée la charge des postes sources ?" title="Comment est estimée la charge des postes sources ?"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></div>
+        <div class="maptog"><span id="ori_lbl">Projets orientés vers les postes libres</span><label class="switch"><input type="checkbox" id="ori_on" aria-labelledby="ori_lbl"><span></span></label>
+          <button type="button" class="map-info" aria-expanded="false" aria-controls="ori-info" aria-label="Que change la lecture « projets orientés » ?" title="Que change la lecture « projets orientés » ?"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></div>
         <div class="maptog"><span id="dens_lbl">Densité ENR (MW/km²)</span><label class="switch"><input type="checkbox" id="dens_on" aria-labelledby="dens_lbl"><span></span></label>
           <button type="button" class="map-info" aria-expanded="false" aria-controls="dens-info" aria-label="Qu'indique la densité ENR ?" title="Qu'indique la densité ENR ?"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></div>
       </div></div>
       <p class="map-help" id="postes-info" hidden>L'ajout estimé par poste = max(0, (multiplicateur solaire − 1) × PV déjà raccordé + (multiplicateur éolien − 1) × éolien déjà raccordé). Le taux projeté = (capacité réservée − capacité restante + ajout estimé) / capacité réservée. La carte signale les postes au-dessus de 90 % et ceux dépassant 100 %. C'est une estimation proportionnelle au parc existant, pas une étude de flux électrique ni une garantie de raccordement.</p>
+      <p class="map-help" id="ori-info" hidden>Par défaut, chaque poste reçoit l'extension de son propre parc (lecture « à l'identique ») : certains postes saturent. Avec les projets orientés, la puissance totale à raccorder (solaire et éolien ajoutés) est répartie entre les postes au prorata de leur capacité S3REnR restante (Caparéseau) : un dépassement n'apparaît que si l'ajout total excède la capacité restante du territoire. Même lecture que la contrainte « postes » des trajectoires.</p>
       <p class="map-help" id="dens-info" hidden>La densité correspond à la puissance solaire et éolienne du scénario dans chaque commune, divisée par sa surface communale brute, en MW/km². Elle indique la concentration des capacités, sans tenir compte des contraintes foncières.</p>
       <div class="map" id="c-carte" role="region" aria-label="Carte des communes et des postes sources"></div>
       <div class="legend" id="lg-carte"></div></div>
@@ -828,9 +831,13 @@ const kHead = (id, label) => `<div class="k-head"><span class="label">${label}</
   <button type="button" class="k-btn k-eye" data-name="${label}" aria-label="Masquer « ${label} »" title="Masquer / afficher cet indicateur"><svg class="e-open" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}</svg><svg class="e-closed" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}<path d="M2.5 14L13.5 2"/></svg></button>
   <button type="button" class="k-btn k-info" aria-expanded="false" aria-label="À propos de « ${label} »" title="Comment lire cet indicateur"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 7.3v4"/><circle cx="8" cy="4.9" r=".5" fill="currentColor"/></svg></button></span></div>
   <div class="k-pop" role="note" hidden>${INFO[id]}</div>`;
-function ajoutsPostes() {
-  const dp = P.m_pv - 1, de = P.m_eol - 1;
-  return GEO.postes.map(p => { const aj = Math.max(0, dp * p.pv_MW + de * p.eol_MW); const occ = p.capacite_reservee_MW - p.restant_MW; return { ...p, ajout: aj, remplissage: (occ + aj) / p.capacite_reservee_MW, depasse: Math.max(0, aj - p.restant_MW) }; });
+// Ajout par poste source. Lecture homothétique (défaut) : chaque poste reçoit l'extension de son propre parc.
+// Lecture « projets orientés » (contrainte (b) de 13_trajectoire.py) : l'ajout total du territoire est réparti au prorata
+// de la capacité S3REnR restante de chaque poste ; il n'y a dépassement que si l'ajout total excède cette capacité.
+function ajoutsPostes(oriente = false) {
+  const dp = P.m_pv - 1, de = P.m_eol - 1, rest = GEO.postes.reduce((t, p) => t + p.restant_MW, 0);
+  const total = Math.max(0, dp * K.Ppv_A) + Math.max(0, de * K.Peol_A);
+  return GEO.postes.map(p => { const aj = oriente ? total * p.restant_MW / rest : Math.max(0, dp * p.pv_MW + de * p.eol_MW); const occ = p.capacite_reservee_MW - p.restant_MW; return { ...p, ajout: aj, remplissage: (occ + aj) / p.capacite_reservee_MW, depasse: Math.max(0, aj - p.restant_MW) }; });
 }
 const liste = (a) => a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " et " + a[a.length - 1];
 function renderVerdict(r, all, eco) {
@@ -963,9 +970,9 @@ const BLOCS = [
 const MENU_IDS = BLOCS.flatMap(g => g[1].map(x => x[0]));
 const KPI_IDS = ["k-prod", "k-auto", "k-surplus", "k-deficit","k-ecr", "k-vig", "k-pointes", "k-cout"];
 const ALL_IDS = [...KPI_IDS, ...MENU_IDS];
-let offSet = new Set(), showPostes = true, showDens = false, sideOpen = !matchMedia("(max-width:900px)").matches, dispOpen = false, infoOpen = null;
-try { const o = JSON.parse(localStorage.getItem("mauges.affichage") || "{}"); offSet = new Set((o.off || []).filter(id => ALL_IDS.includes(id))); if (o.postes === false) showPostes = false; if (o.dens === true) showDens = true; if (typeof o.side === "boolean") sideOpen = o.side; if (o.disp === true) dispOpen = true; } catch (e) { /* stockage indisponible : réglages par défaut */ }
-function savePrefs() { try { localStorage.setItem("mauges.affichage", JSON.stringify({ off: [...offSet], postes: showPostes, dens: showDens, side: sideOpen, disp: dispOpen })); } catch (e) { /* ignoré */ } }
+let offSet = new Set(), showPostes = true, showDens = false, showOriente = false, sideOpen = !matchMedia("(max-width:900px)").matches, dispOpen = false, infoOpen = null;
+try { const o = JSON.parse(localStorage.getItem("mauges.affichage") || "{}"); offSet = new Set((o.off || []).filter(id => ALL_IDS.includes(id))); if (o.postes === false) showPostes = false; if (o.dens === true) showDens = true; if (o.oriente === true) showOriente = true; if (typeof o.side === "boolean") sideOpen = o.side; if (o.disp === true) dispOpen = true; } catch (e) { /* stockage indisponible : réglages par défaut */ }
+function savePrefs() { try { localStorage.setItem("mauges.affichage", JSON.stringify({ off: [...offSet], postes: showPostes, dens: showDens, oriente: showOriente, side: sideOpen, disp: dispOpen })); } catch (e) { /* ignoré */ } }
 function showInfo() {
   for (const card of document.querySelectorAll(".kpi")) { const open = card.id === infoOpen, pop = card.querySelector(".k-pop"), btn = card.querySelector(".k-info");
     if (btn) btn.setAttribute("aria-expanded", open);
@@ -1033,6 +1040,8 @@ function setSide(open) {
   $("postes_on").checked = showPostes; $("dens_on").checked = showDens;
   $("postes_on").onchange = () => { showPostes = $("postes_on").checked; savePrefs(); if (mapL) applyPostes(); };
   $("dens_on").onchange = () => { showDens = $("dens_on").checked; savePrefs(); if (mapL && lastR) renderCarte(); };
+  $("ori_on").checked = showOriente;
+  $("ori_on").onchange = () => { showOriente = $("ori_on").checked; savePrefs(); if (mapL && lastR) renderCarte(); };
 })();
 // surface d'une commune (km²), calculée sur le contour : projection locale en km, formule du lacet ; trous déduits
 function surfaceKm2(f) {
@@ -1091,7 +1100,7 @@ function applyPostes() {
   if (showPostes) { if (!mapL.hasLayer(mapPostes)) mapL.addLayer(mapPostes); } else { mapL.removeLayer(mapPostes); $("tip").hidden = true; }
   const sz = getComputedStyle(document.documentElement).getPropertyValue("--seuil").trim();
   $("lg-carte").innerHTML = (showPostes
-    ? `<span><i class="a" style="background:var(--accent)"></i>capacité suffisante</span><span><i class="a" style="background:var(--warn)"></i>remplie à plus de 90 %</span><span><i class="a" style="background:var(--ko)"></i>✕ dépassée (hachuré)</span><span>Taille : MW raccordés · Caparéseau, juin 2026</span>`
+    ? `<span><i class="a" style="background:var(--accent)"></i>capacité suffisante</span><span><i class="a" style="background:var(--warn)"></i>remplie à plus de 90 %</span><span><i class="a" style="background:var(--ko)"></i>✕ dépassée (hachuré)</span><span>Taille : MW raccordés · Caparéseau, juin 2026</span><span>Lecture : ${showOriente ? "projets orientés vers les postes libres" : "parc étendu à l'identique"}</span>`
     : `<span>Postes sources masqués</span>`)
     + (showDens
       ? `<span><i class="a" style="width:56px;background:linear-gradient(90deg,${hexA(sz, .1)},${hexA(sz, .68)})"></i>densité de puissance ENR du scénario : ${fr(densRange[0], 2)} à ${fr(densRange[1], 2)} MW/km² · surface communale brute, hors contraintes foncières</span>`
@@ -1157,7 +1166,7 @@ function renderCarte() {
 
   // Postes sources : taille = MW raccordés, couleur = taux de remplissage S3REnR, hachuré si dépassé
   mapPostes.clearLayers(); obstacles = [];
-  const aj = ajoutsPostes();
+  const aj = ajoutsPostes(showOriente);
   for (const p of aj) {
     const mw = p.pv_MW * P.m_pv + p.eol_MW * P.m_eol, r = 5 + Math.sqrt(mw) * 1.4, ko = p.remplissage > 1.0001;
     const fill = ko ? `url(#hatch-${p.code})` : p.remplissage > 0.9 ? cWarn : cAccent;
