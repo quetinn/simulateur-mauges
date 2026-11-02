@@ -126,6 +126,8 @@ body.projection .seg-prix button{font-size:15px}
 .meth-hyp summary{cursor:pointer;padding:6px 0}
 #t-hyp td:nth-child(2){white-space:nowrap}
 #t-hyp td:last-child{color:var(--ink-2);font-size:12.5px;min-width:280px}
+.export{font-size:13.5px}
+.export .r{color:var(--ink-2)}
 .ctl-row{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center}
 .ctl-row .seg{min-width:0}
 .ctl-row .seg button{white-space:nowrap;padding-inline:10px}
@@ -461,7 +463,8 @@ body.projection .commune-lbl .cl{font-size:13px}
     </div>
     <details class="meth-hyp" open><summary><h3>Hypothèses du simulateur (<span id="meth-n"></span>)</h3></summary>
       <div class="tbl"><table id="t-hyp"></table></div></details></div>
-  <div class="panel card" id="b-annees"><div class="card-h"><div><h2>Indicateurs 2021-2025</h2><p>Chaque année météo simulée séparément, sans moyenner les profils</p></div></div>
+  <div class="panel card" id="b-annees"><div class="card-h"><div><h2>Indicateurs 2021-2025</h2><p>Chaque année météo simulée séparément, sans moyenner les profils</p></div>
+    <div class="ctl-row export" role="group" aria-label="Exporter"><span class="r">Exporter :</span><button type="button" class="iconbtn" id="exp-ind">Indicateurs 2021-2025 (CSV)</button><button type="button" class="iconbtn" id="exp-h">Série horaire <span id="exp-an"></span> (CSV)</button><button type="button" class="iconbtn" id="exp-json">Paramètres (JSON)</button></div></div>
     <div class="tbl"><table id="t-annees"></table></div></div>
 </main>
 </div>
@@ -1190,6 +1193,7 @@ function renderExpert() {
     return `<b>${when}</b><br>solaire ${fr(s.pv[i], 0)} MW · éolien ${fr(s.eol[i] + A.autres[i], 0)} MW<br>consommation ${fr(s.C[i], 0)} MW<br>seuil 120 % : ${fr(s.C[i] * 1.2, 0)} MW${bat ? `<br>état de charge ${fr(s.soc[i], 0)} / ${fr(E, 0)} MWh` : ""}`; };
   $("c-soc").hidden = bat;
   const dt = new Date(Date.UTC(+P.annee, 0, 1 + A.jour[idx[0]]));
+  $("exp-an").textContent = P.annee;
   $("v-sem").textContent = dt.toLocaleDateString("fr-FR", { day: "numeric", month: "long" }); $("hx-sub").textContent = `Année ${P.annee}, pas horaire, heure UTC`;
   setLegend("c-heures", "lg-heures", [[N.eol, "background:var(--s-eol)", "a"], [N.pv, "background:var(--s-pv)", "a"], [N.conso, "background:var(--ink)"], [N.seuil, "background:var(--seuil)"], ...(bat ? [[N.soc, "background:var(--s-bat)"]] : [])]);
   drawChart("c-heures", opt, H);
@@ -1280,6 +1284,28 @@ function buildMethode(grp) {
   $("t-hyp").innerHTML = h + "</tbody>"; $("meth-n").textContent = `${Object.keys(META.parametres).length} paramètres`;
   $("meth-sub").textContent = `Données du ${new Date(META.version_donnees).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}, années météo ${META.annees[0]}-${META.annees[META.annees.length - 1]}. Détail : donnees/JOURNAL_METHODE.md et donnees/SOURCES.md du projet.`;
 }
+// ---- export : CSV au format tableur français (séparateur « ; », virgule décimale, BOM UTF-8) et JSON des paramètres
+function telecharger(nom, contenu, type) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([contenu], { type })); a.download = nom;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const cellule = v => typeof v === "number" ? String(+v.toPrecision(10)).replace(".", ",") : typeof v === "boolean" ? (v ? "oui" : "non") : String(v);
+const csv = lignes => "\ufeff" + lignes.map(l => l.map(cellule).join(";")).join("\r\n") + "\r\n";
+const suffixe = () => (presetActif || "personnalise").replace(/[^a-z0-9_]/gi, "_");
+$("exp-ind").onclick = () => {
+  const cles = Object.keys(lastAll[0]).filter(k => k !== "series");
+  telecharger(`mauges_indicateurs_2021-2025_${suffixe()}.csv`, csv([["annee", ...cles], ...META.annees.map((a, i) => [a, ...cles.map(k => lastAll[i][k])])]), "text/csv;charset=utf-8");
+};
+$("exp-h").onclick = () => {
+  const s = lastSeries, A = ANS[P.annee], t0 = Date.UTC(P.annee, 0, 1);
+  const l = [["heure_utc", "production_MW", "solaire_MW", "eolien_MW", "autres_enr_MW", "consommation_MW", "charge_batterie_MW", "decharge_batterie_MW", "etat_charge_MWh", "injection_nette_MW"]];
+  for (let i = 0; i < A.n; i++) l.push([new Date(t0 + i * 3600e3).toISOString().slice(0, 16) + "Z", s.P[i], s.pv[i], s.eol[i], A.autres[i], s.C[i], s.ch[i], s.dch[i], s.soc[i], s.inj[i]]);
+  telecharger(`mauges_serie_horaire_${P.annee}_${suffixe()}.csv`, csv(l), "text/csv;charset=utf-8");
+};
+$("exp-json").onclick = () => {
+  const params = Object.fromEntries(Object.keys(META.parametres).map(k => [k, P[k]]));
+  telecharger(`mauges_parametres_${suffixe()}.json`, JSON.stringify({ version_donnees: META.version_donnees, scenario: presetActif, parametres: params, ecarts_au_defaut: Object.fromEntries(Object.entries(params).filter(([k, v]) => v !== DEF[k])) }, null, 2), "application/json");
+};
 function buildForm() {
   const grp = { meteo: "Météo et volume", production: "Production", ecretement: "Écrêtement et seuils", conso: "Consommation 2035", ve: "Véhicules électriques", pac: "Pompes à chaleur", ecs: "Ballons d'eau chaude", batterie: "Batterie", economie: "Économie" };
   let h = "", cur = "";
