@@ -1,5 +1,7 @@
 # Simulateur ENR — Mauges Communauté
 
+**Application en ligne : https://quetinn.github.io/simulateur-mauges/** (hors ligne : ouvrir `app/index.html` par double-clic ; voir `app/README.md`).
+
 Dossier de conception du simulateur du Projet 2 « Intégration des ENR » (ESIEE Paris, Smart Grids, 2026).
 
 ```

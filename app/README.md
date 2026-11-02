@@ -5,7 +5,7 @@ déficit, l'écrêtement et le réseau quand on développe le solaire et l'éoli
 Projet 2 « Intégration des ENR », cours Smart Grids, ESIEE Paris, 2026.
 
 ## Ouvrir l'application
-- **En ligne** : publiée sur GitHub Pages (lien à venir).
+- **En ligne** : https://quetinn.github.io/simulateur-mauges/ (GitHub Pages, branche `gh-pages`).
 - **Hors ligne (secours)** : double-cliquer sur `index.html` (Chrome ou Edge). Aucune installation, aucun serveur.
   Tout est embarqué : seules les tuiles du fond de carte viennent d'Internet. Sans réseau, la carte s'affiche
   « Sans fond de carte » (contours des communes et postes sources seuls).
@@ -33,6 +33,7 @@ Projet 2 « Intégration des ENR », cours Smart Grids, ESIEE Paris, 2026.
 | `vendor/fonts/` | Archivo, Atkinson Hyperlegible, IBM Plex Mono (licence SIL OFL) |
 | `scripts/captures.mjs` | Outil de développement : captures Playwright (non nécessaire à l'application) |
 | `scripts/precalcul_js.mjs` | Outil de développement : régénère `precalcul.js` (`node app/scripts/precalcul_js.mjs`) |
+| `scripts/publier_pages.sh` | Republie `app/` sur GitHub Pages après un commit sur `main` (`sh app/scripts/publier_pages.sh`) |
 | `captures/` | Captures de contrôle avant / après chaque tâche (non nécessaire à l'application) |
 
 L'application n'utilise ni `fetch`, ni modules ES, ni CDN : elle fonctionne aussi bien en `file://` qu'en `https://`.
